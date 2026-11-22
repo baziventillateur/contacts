@@ -1,4 +1,4 @@
-/* Contacts · compléments v1.1.0
+/* Contacts · compléments v1.2.0
    Badges (Malino, PaceApp, Pro, Particulier), installation de l'appli, cloche de notifications et notifications push
    (même principe que CovoitGo), ajout de contacts par photo (lecture des e-mails dans le navigateur) et import Google Contacts. */
 (() => {
@@ -27,6 +27,12 @@
   .det{display:flex;gap:7px;align-items:flex-start;padding:6px 0;border-top:1px solid var(--line2)}.det:first-child{border-top:0}.det input{margin-top:3px}.det .m{flex:1;min-width:0;word-break:break-all}
   .fab2{position:fixed;right:20px;bottom:132px;width:40px;height:40px;border-radius:12px;background:#fff;border:1px solid var(--line);color:var(--acc);display:flex;align-items:center;justify-content:center;box-shadow:0 4px 12px rgba(0,0,0,.12);z-index:10}.fab2 svg{width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
   @media (min-width:900px){.fab2{display:none}}
+  .xexc.on{background:#FFF7ED;border-color:#FED7AA}
+  .xadd{display:grid;grid-template-columns:1fr 1fr;gap:6px;flex:none}.xadd .btn{justify-content:center;height:34px;font-size:12.5px}
+  .xtabs{display:flex;margin-bottom:8px}.xtabs button{flex:1;justify-content:center}
+  .xta{width:100%;border:1px solid var(--line);border-radius:9px;padding:8px 9px;font-size:13px;line-height:1.4;resize:vertical;min-height:110px;background:var(--panel)}.xta:focus{outline:none;border-color:var(--acc-line);box-shadow:0 0 0 3px #E8EEFB}
+  .mapr{display:flex;gap:8px;align-items:center;padding:6px 0;border-top:1px solid var(--line2)}.mapr:first-of-type{border-top:0}.mapr .m{flex:1;min-width:0;display:flex;flex-direction:column}.mapr .m b{font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mapr .m span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mapr select{width:132px;flex:none;height:30px;border:1px solid var(--line);border-radius:7px;font-size:12.5px;padding:0 6px;background:var(--panel)}
   .steps{margin:4px 0 0;padding-left:18px;font-size:12.5px;color:var(--mut)}.steps li{margin:3px 0}`;
   document.head.appendChild(css);
 
@@ -70,7 +76,7 @@
   renderSide = function () {
     _renderSide.apply(this, arguments);
     const n = $('#sNew'); if (!n || $('#sImp')) return;
-    n.insertAdjacentHTML('afterend', `<button class="sbtn" id="sCam">${ico('cam')}Ajouter par photo</button><button class="sbtn" id="sImp">${ico('up')}Importer (Google…)</button><button class="sbtn" id="sBell">${ico('bell')}Notifications</button>`);
+    n.insertAdjacentHTML('afterend', `<button class="sbtn" id="sCam">${ico('cam')}Ajouter par photo</button><button class="sbtn" id="sImp">${ico('up')}Importer des contacts</button><button class="sbtn" id="sBell">${ico('bell')}Notifications</button>`);
     $('#sCam').onclick = () => { toggleSide(false); openForm._photo = true; openForm(null); };
     $('#sImp').onclick = () => { toggleSide(false); openImport(); };
     $('#sBell').onclick = () => { toggleSide(false); openNotifs(); };
@@ -167,8 +173,9 @@
   openForm = function () {
     _openForm.apply(this, arguments);
     const d = $('#drawer'), form = d && $('#nForm', d); if (!form || $('#camBtn', d)) return;
-    form.insertAdjacentHTML('afterbegin', `<button type="button" class="btn" id="camBtn" style="justify-content:center;flex:none;height:36px">${ico('cam')}Prendre une photo (carte de visite, liste…)</button><input type="file" id="camIn" accept="image/*" capture="environment" class="hidden"><div id="ocrZ"></div>`);
+    form.insertAdjacentHTML('afterbegin', `<div class="xadd"><button type="button" class="btn" id="camBtn">${ico('cam')}Photo</button><button type="button" class="btn" id="impFBtn">${ico('up')}Importer plusieurs</button></div><input type="file" id="camIn" accept="image/*" capture="environment" class="hidden"><div id="ocrZ"></div>`);
     $('#camBtn', d).onclick = () => { $('#camIn', d).value = ''; $('#camIn', d).click(); };
+    $('#impFBtn', d).onclick = () => openImport();
     $('#camIn', d).onchange = e => { const f = e.target.files[0]; if (f) readPhoto(f, d); };
     if (openForm._photo) { openForm._photo = false; setTimeout(() => $('#camBtn', d).click(), 50); }
   };
@@ -196,55 +203,226 @@
     } catch (e) { z.innerHTML = `<div class="ocr"><img src="${url}" alt=""><p class="small">Lecture impossible (${esc(e.message || e)}). Vérifie la connexion et réessaie.</p></div>`; }
   }
 
-  /* ---------- import Google Contacts (CSV ou vCard) ---------- */
+  /* ---------- import : texte collé, fichier CSV / Excel / vCard, Google Contacts ---------- */
+  const CH = [['ignore', '— Ignorer'], ['email', 'E-mail'], ['prenom', 'Prénom'], ['nom', 'Nom'], ['pnom', 'Prénom + nom'], ['telephone', 'Téléphone'], ['entreprise', 'Entreprise'], ['metier', 'Métier / poste'], ['ville', 'Ville'], ['notes', 'Notes']];
+  const PHG = /(?:\+\d{2,3}[\s.\-]?(?:\(0\))?|0)[1-9](?:[\s.\-]?\d{2}){4}/;
+  const isEm = v => /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(String(v || '').trim());
+  const isPh = v => { const s = String(v || '').trim(); return /^\+?[\d\s.\-()]{8,22}$/.test(s) && s.replace(/\D/g, '').length >= 9; };
+  const uniq = a => [...new Set(a)];
+  const allEm = t => uniq((String(t).match(EMRE) || []).map(x => x.toLowerCase().replace(/[.,;:]+$/, '')));
   function parseCsv(t) {
-    const rows = []; let row = [], cur = '', q = false;
-    const sep = (t.split('\n', 1)[0].match(/;/g) || []).length > (t.split('\n', 1)[0].match(/,/g) || []).length ? ';' : ',';
+    const rows = []; let row = [], cur = '', q = false; const l0 = t.split('\n', 1)[0];
+    const sep = (l0.match(/\t/g) || []).length ? '\t' : (l0.match(/;/g) || []).length > (l0.match(/,/g) || []).length ? ';' : ',';
     for (let i = 0; i < t.length; i++) { const c = t[i];
       if (q) { if (c === '"') { if (t[i + 1] === '"') { cur += '"'; i++; } else q = false; } else cur += c; }
-      else if (c === '"') q = true; else if (c === sep) { row.push(cur); cur = ''; } else if (c === '\n' || c === '\r') { if (c === '\r' && t[i + 1] === '\n') i++; row.push(cur); rows.push(row); row = []; cur = ''; } else cur += c; }
-    if (cur || row.length) { row.push(cur); rows.push(row); }
-    return rows.filter(r => r.some(x => x.trim()));
-  }
-  function fromCsv(t) {
-    const R = parseCsv(t.replace(/^﻿/, '')); if (R.length < 2) return [];
-    const H = R[0].map(h => h.trim().toLowerCase()), col = re => H.findIndex(h => re.test(h)), cols = re => H.map((h, i) => re.test(h) ? i : -1).filter(i => i >= 0);
-    const iF = col(/^(first name|given name|prénom|prenom)$/), iL = col(/^(last name|family name|nom de famille|nom)$/), iN = col(/^(name|nom complet|display name)$/);
-    const iO = col(/organi[sz]ation( 1)? ?(-|–)? ?name|^company$|^entreprise$|société/), iT = col(/organi[sz]ation( 1)? ?(-|–)? ?title|job title|^poste$|fonction/);
-    const iP = col(/phone( 1)? ?(-|–)? ?value|mobile phone|^téléphone|^telephone|^phone$/), iE = cols(/e-?mail.*(value|address)|^e-?mail$|courriel/);
-    return R.slice(1).map(r => { const ems = [...new Set(iE.flatMap(i => (r[i] || '').split(/\s*:::\s*|[;,]\s*/)).map(x => x.trim().toLowerCase()).filter(x => /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i.test(x)))];
-      let pre = iF >= 0 ? r[iF] : '', nom = iL >= 0 ? r[iL] : ''; if (!pre && !nom && iN >= 0) { const p = (r[iN] || '').trim().split(/\s+/); pre = p.shift() || ''; nom = p.join(' '); }
-      return { email: ems[0] || '', autres: ems.slice(1), prenom: (pre || '').trim(), nom: (nom || '').trim(), entreprise: iO >= 0 ? (r[iO] || '').trim() : '', metier: iT >= 0 ? (r[iT] || '').trim() : '', telephone: iP >= 0 ? (r[iP] || '').split(':::')[0].trim() : '' }; });
+      else if (c === '"' && cur === '') q = true; else if (c === sep) { row.push(cur.trim()); cur = ''; } else if (c === '\n' || c === '\r') { if (c === '\r' && t[i + 1] === '\n') i++; row.push(cur.trim()); rows.push(row); row = []; cur = ''; } else cur += c; }
+    if (cur || row.length) { row.push(cur.trim()); rows.push(row); }
+    return rows.filter(r => r.some(x => x));
   }
   function fromVcf(t) {
-    return t.split(/BEGIN:VCARD/i).slice(1).map(b => { const L = b.replace(/\r?\n[ \t]/g, '').split(/\r?\n/), get = k => L.filter(l => new RegExp('^(item\\d+\\.)?' + k + '[;:]', 'i').test(l)).map(l => l.slice(l.indexOf(':') + 1).trim());
-      const n = (get('N')[0] || '').split(';'), ems = [...new Set(get('EMAIL').map(x => x.toLowerCase()))];
-      return { email: ems[0] || '', autres: ems.slice(1), prenom: n[1] || (get('FN')[0] || '').split(' ')[0] || '', nom: n[0] || '', entreprise: (get('ORG')[0] || '').split(';')[0], metier: get('TITLE')[0] || '', telephone: get('TEL')[0] || '' }; });
+    const R = t.split(/BEGIN:VCARD/i).slice(1).map(b => { const L = b.replace(/\r?\n[ \t]/g, '').split(/\r?\n/), get = k => L.filter(l => new RegExp('^(item\\d+\\.)?' + k + '[;:]', 'i').test(l)).map(l => l.slice(l.indexOf(':') + 1).trim());
+      const n = (get('N')[0] || '').split(';');
+      return [get('EMAIL').join(' '), n[1] || (get('FN')[0] || '').split(' ')[0] || '', n[0] || '', (get('ORG')[0] || '').split(';')[0], get('TITLE')[0] || '', get('TEL')[0] || '']; });
+    return { head: ['E-mail', 'Prénom', 'Nom', 'Entreprise', 'Poste', 'Téléphone'], rows: R };
+  }
+  function guessHead(h) {
+    h = String(h || '').toLowerCase().trim();
+    if (!h) return null;
+    if (/label|type|étiquette/.test(h)) return 'ignore';
+    if (/e-?mail|courriel|^mail/.test(h)) return 'email';
+    if (/^(first name|given name|prénom|prenom)/.test(h)) return 'prenom';
+    if (/^(last name|family name|surname|nom de famille|^nom$)/.test(h)) return 'nom';
+    if (/^(name|nom complet|display name|full name|nom et prénom|nom prénom|contact|identité)$/.test(h)) return 'pnom';
+    if (/phone|téléphone|telephone|mobile|portable|^tél|^tel\b|gsm/.test(h)) return 'telephone';
+    if (/organi[sz]ation.*title|job title|^titre|poste|fonction|métier|metier/.test(h)) return 'metier';
+    if (/organi[sz]ation|company|entreprise|société|societe|raison sociale/.test(h)) return 'entreprise';
+    if (/city|ville|commune/.test(h)) return 'ville';
+    if (/^(notes?|commentaires?|remarques?)$/.test(h)) return 'notes';
+    return null;
+  }
+  function hasHead(R) {
+    if (R.length < 2) return false; const r0 = R[0];
+    return !r0.some(isEm) && !r0.some(isPh) && r0.filter(Boolean).every(c => c.length < 45) && (r0.some(c => guessHead(c)) || R.slice(1, 20).some(r => r.some(isEm)));
+  }
+  function guessCols(R, H) {
+    const n = Math.max(...R.map(r => r.length)), map = []; let txt = 0;
+    for (let c = 0; c < n; c++) {
+      const vals = R.map(r => String(r[c] || '').trim()).filter(Boolean);
+      if (!vals.length) { map.push('ignore'); continue; }
+      let g = H ? guessHead(H[c]) : null;
+      if (!g) {
+        const pe = vals.filter(v => EMRE.test(v) && (EMRE.lastIndex = 0, true)).length / vals.length, pp = vals.filter(isPh).length / vals.length;
+        if (pe >= .5) g = 'email'; else if (pp >= .5) g = 'telephone';
+        else if (H) g = 'ignore';
+        else { const multi = vals.some(v => v.split(/\s+/).length > 1);
+          g = txt === 0 ? (multi ? 'pnom' : 'prenom') : txt === 1 && map.includes('prenom') ? 'nom' : txt === 1 ? 'entreprise' : 'notes'; txt++; }
+      }
+      map.push(g);
+    }
+    return map;
+  }
+  function parseText(t) {
+    const L = t.replace(/\r/g, '').split('\n').map(l => l.trim()).filter(Boolean);
+    if (!L.length) return null;
+    const rest = l => l.replace(EMRE, '').replace(/[\s,;:<>"'()\[\]|\/]+/g, '');
+    if (L.every(l => !rest(l))) return { only: true, emails: allEm(t) };
+    for (const d of ['\t', ';', '|', ',']) {
+      if (L.filter(l => l.includes(d)).length / L.length < .8) continue;
+      const R = d === ',' || d === ';' ? parseCsv(L.join('\n')) : L.map(l => l.split(d).map(x => x.trim().replace(/^"|"$/g, '')));
+      const H = hasHead(R) ? R[0] : null;
+      return { rows: H ? R.slice(1) : R, head: H };
+    }
+    // Séparé par des espaces : on repère l'e-mail et le téléphone, le reste devient une colonne de texte
+    const R = L.map(l => { const em = (l.match(EMRE) || []).join(' '); let r = l.replace(EMRE, ' '); const ph = (r.match(PHG) || [''])[0]; if (ph) r = r.replace(ph, ' ');
+      return [em, ph.trim(), r.replace(/[,;|:]+/g, ' ').replace(/\s+/g, ' ').trim()]; });
+    return { rows: R, head: null, lab: ['E-mail repéré', 'Téléphone repéré', 'Reste de la ligne'] };
+  }
+  let xlsxP = null;
+  const xlsx = () => xlsxP || (xlsxP = new Promise((ok, ko) => { const s = document.createElement('script'); s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'; s.onload = () => ok(window.XLSX); s.onerror = () => { xlsxP = null; ko(new Error('chargement du lecteur Excel')); }; document.head.appendChild(s); }));
+  async function readFile(f) {
+    const nm = f.name.toLowerCase();
+    if (/\.(xlsx|xlsm|xls|ods)$/.test(nm)) {
+      const X = await xlsx(), wb = X.read(await f.arrayBuffer(), { type: 'array' });
+      let best = null;
+      wb.SheetNames.forEach(sn => { const R = X.utils.sheet_to_json(wb.Sheets[sn], { header: 1, defval: '', raw: false }).map(r => r.map(c => String(c ?? '').trim())).filter(r => r.some(Boolean));
+        const n = allEm(R.map(r => r.join(' ')).join('\n')).length; if (!best || n > best.n) best = { R, n }; });
+      const R = best ? best.R : []; const H = hasHead(R) ? R[0] : null; return { rows: H ? R.slice(1) : R, head: H, src: 'Import fichier' };
+    }
+    let t = await f.text(); if (t.includes('�')) t = new TextDecoder('windows-1252').decode(await f.arrayBuffer());
+    t = t.replace(/^﻿/, '');
+    if (/BEGIN:VCARD/i.test(t)) return Object.assign(fromVcf(t), { src: 'Import fichier' });
+    if (!/[,;\t]/.test(t.split('\n', 1)[0])) { const p = parseText(t); return p && Object.assign(p, { src: 'Import fichier' }); }
+    const R = parseCsv(t), H = hasHead(R) ? R[0] : null;
+    return { rows: H ? R.slice(1) : R, head: H, src: H && H.some(h => /e-mail 1 - value|given name|first name/i.test(h)) ? 'Google Contacts' : 'Import fichier' };
+  }
+  function build(R, map) {
+    const by = new Map();
+    R.forEach(r => {
+      const c = { email: '', autres: [], prenom: '', nom: '', telephone: '', entreprise: '', metier: '', ville: '', notes: [] };
+      map.forEach((m, i) => { const v = String(r[i] || '').trim(); if (!v || m === 'ignore') return;
+        if (m === 'email') allEm(v).forEach(e => { if (!c.email) c.email = e; else if (e !== c.email && !c.autres.includes(e)) c.autres.push(e); });
+        else if (m === 'pnom') { const p = v.split(/\s+/); if (!c.prenom) c.prenom = p.shift() || ''; if (!c.nom) c.nom = p.join(' '); }
+        else if (m === 'notes') c.notes.push(v);
+        else if (m === 'telephone') { if (!c.telephone) c.telephone = v.split(/\s*:::\s*/)[0]; }
+        else if (!c[m]) c[m] = v; });
+      if (!c.email) return;
+      const o = by.get(c.email); if (!o) by.set(c.email, c); else Object.keys(c).forEach(k => { if (Array.isArray(c[k])) o[k] = uniq(o[k].concat(c[k])); else if (!o[k]) o[k] = c[k]; });
+    });
+    return [...by.values()];
   }
   function openImport() {
     const d = drawer(`<div class="dhead"><button class="icon bare" id="dX" aria-label="Fermer">${ico('x')}</button><h2>Importer des contacts</h2></div>
-      <div class="dbody"><div class="card"><h4>Depuis Google Contacts</h4><ol class="steps"><li>Ouvre <a href="https://contacts.google.com" target="_blank" rel="noopener">contacts.google.com</a> sur ordinateur.</li><li>À gauche : <b>Exporter</b> → <b>CSV Google</b> → Exporter.</li><li>Choisis le fichier ci-dessous : seuls les contacts avec un e-mail sont ajoutés, les doublons sont fusionnés.</li></ol>
-      <p style="margin:10px 0 4px"><button class="btn primary" id="fBtn">${ico('up')}Choisir le fichier (.csv ou .vcf)</button><input type="file" id="fIn" accept=".csv,.vcf,text/csv,text/vcard" class="hidden"></p><div id="iZ"></div></div>
-      <p class="small mut">Marche aussi avec un export Outlook ou iPhone (vCard).</p></div>`);
-    $('#dX', d).onclick = closeDrawer; $('#fBtn', d).onclick = () => $('#fIn', d).click();
-    $('#fIn', d).onchange = async e => {
-      const f = e.target.files[0]; if (!f) return; const t = await f.text();
-      const all = /BEGIN:VCARD/i.test(t) ? fromVcf(t) : fromCsv(t), L = all.filter(c => c.email), z = $('#iZ', d);
-      if (!L.length) { z.innerHTML = '<p class="small"><b>Aucun contact avec e-mail</b> dans ce fichier.</p>'; return; }
-      z.innerHTML = `<p class="small"><b>${L.length}</b> contacts avec e-mail sur ${all.length}.</p><button class="btn primary" id="iGo">Importer ${L.length} contacts</button><div class="prog hidden" id="iPr"><i></i></div><p class="small mut" id="iSt"></p>`;
-      $('#iGo', d).onclick = async () => {
-        $('#iGo', d).disabled = true; $('#iPr', d).classList.remove('hidden'); let done = 0, nouv = 0, fus = 0, err = 0, i = 0;
+      <div class="dbody"><div class="seg xtabs" id="iTabs"><button class="on" data-t="txt">Coller du texte</button><button data-t="file">Fichier CSV / Excel</button></div>
+      <div id="iSrc"></div><div id="iMap"></div></div>`);
+    $('#dX', d).onclick = closeDrawer;
+    const src = $('#iSrc', d), out = $('#iMap', d);
+    const tab = t => { $$('#iTabs button', d).forEach(b => b.classList.toggle('on', b.dataset.t === t)); out.innerHTML = '';
+      if (t === 'txt') {
+        src.innerHTML = `<div class="card"><textarea id="iTxt" class="xta" rows="6" placeholder="Colle ici des e-mails (séparés par des espaces, virgules ou retours à la ligne)…&#10;&#10;…ou une liste, un contact par ligne :&#10;jean@exemple.fr Jean 06 12 34 56 78"></textarea>
+          <p class="small mut" style="margin:6px 0 0">Seulement des e-mails : ils sont pris tels quels. Plusieurs informations par ligne : je te demande à quoi correspond chaque colonne.</p></div>`;
+        let tm = 0; $('#iTxt', d).oninput = e => { clearTimeout(tm); tm = setTimeout(() => show(parseText(e.target.value), 'Import texte', e.target.value), 350); };
+        setTimeout(() => $('#iTxt', d)?.focus(), 80);
+      } else {
+        src.innerHTML = `<div class="card"><button class="btn primary" id="fBtn">${ico('up')}Choisir un fichier</button><input type="file" id="fIn" accept=".csv,.txt,.tsv,.xlsx,.xlsm,.xls,.ods,.vcf,text/csv,text/vcard" class="hidden">
+          <p class="small mut" style="margin:6px 0 0">CSV, Excel (.xlsx, .xls), vCard (.vcf). Seuls les contacts avec un e-mail sont gardés, les doublons sont fusionnés.</p>
+          <details class="small" style="margin-top:6px"><summary>Exporter depuis Google Contacts</summary><ol class="steps"><li>Ouvre <a href="https://contacts.google.com" target="_blank" rel="noopener">contacts.google.com</a> sur ordinateur.</li><li>À gauche : <b>Exporter</b> → <b>CSV Google</b> → Exporter.</li><li>Choisis le fichier téléchargé ici.</li></ol></details></div>`;
+        $('#fBtn', d).onclick = () => $('#fIn', d).click();
+        $('#fIn', d).onchange = async e => { const f = e.target.files[0]; if (!f) return; out.innerHTML = '<p class="small mut">Lecture du fichier…</p>';
+          try { const p = await readFile(f); show(p, p && p.src, null, f.name); } catch (x) { out.innerHTML = `<p class="small">Fichier illisible (${esc(x.message || x)}).</p>`; } };
+      } };
+    $$('#iTabs button', d).forEach(b => b.onclick = () => tab(b.dataset.t));
+    tab('txt');
+
+    function show(p, origine, rawText, fname) {
+      if (!p || (!p.only && !p.rows.length)) { out.innerHTML = rawText === '' ? '' : '<p class="small">Rien de lisible pour l’instant.</p>'; return; }
+      if (p.only) return showEmails(p.emails, origine);
+      const R = p.rows, H = p.head, map = guessCols(R, H), n = Math.max(...R.map(r => r.length));
+      const cols = [...Array(n).keys()].filter(c => R.some(r => String(r[c] || '').trim()));
+      const lab = c => (H && H[c]) || (p.lab && p.lab[c]) || 'Colonne ' + (c + 1);
+      const sample = c => R.map(r => String(r[c] || '').trim()).filter(Boolean).slice(0, 2).map(v => v.length > 32 ? v.slice(0, 30) + '…' : v).join(' · ');
+      let all = false;
+      const draw = () => {
+        const main = cols.filter(c => map[c] !== 'ignore'), rest = cols.filter(c => map[c] === 'ignore');
+        const shown = all || cols.length <= 8 ? cols : main.length ? main : cols.slice(0, 5);
+        const L = build(R, map);
+        out.innerHTML = `<div class="card"><h4>${cols.length} colonne${cols.length > 1 ? 's' : ''} détectée${cols.length > 1 ? 's' : ''}${fname ? ' · ' + esc(fname) : ''}</h4><p class="small mut" style="margin:0 0 4px">Indique ce que contient chaque colonne.</p>
+          ${shown.map(c => `<div class="mapr"><div class="m"><b>${esc(lab(c))}</b><span class="small mut">${esc(sample(c)) || '—'}</span></div><select data-c="${c}">${CH.map(([k, l]) => `<option value="${k}" ${map[c] === k ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`).join('')}
+          ${!all && shown.length < cols.length ? `<button class="btn link" id="mAll">Autres colonnes (${cols.length - shown.length})</button>` : ''}
+          ${rawText != null ? '<label class="small" style="display:flex;gap:6px;align-items:center;margin-top:6px"><input type="checkbox" id="mOnly">Ne garder que les e-mails (un contact par e-mail)</label>' : ''}</div>
+          ${!map.includes('email') ? '<p class="small" style="color:#B42318">⚠️ Choisis la colonne qui contient l’e-mail.</p>' : ''}
+          ${footer(L, R.length, origine)}`;
+        $$('select[data-c]', out).forEach(s => s.onchange = () => { map[+s.dataset.c] = s.value; draw(); });
+        const m = $('#mAll', out); if (m) m.onclick = () => { all = true; draw(); };
+        const o = $('#mOnly', out); if (o) o.onchange = () => showEmails(allEm(rawText), origine, () => draw());
+        bindGo(L, origine);
+      };
+      draw();
+    }
+    function showEmails(E, origine, back) {
+      let all = false;
+      const draw = () => { const L = E.map(e => ({ email: e, autres: [], prenom: '', nom: '', telephone: '', entreprise: '', metier: '', ville: '', notes: [] }));
+        out.innerHTML = `<div class="card"><h4>${E.length} e-mail${E.length > 1 ? 's' : ''} détecté${E.length > 1 ? 's' : ''}</h4>${E.slice(0, all ? E.length : 5).map(e => `<div class="small" style="padding:2px 0">${esc(e)}</div>`).join('')}
+          ${E.length > 5 && !all ? `<button class="btn link" id="eAll">Tout voir (${E.length})</button>` : ''}${back ? '<button class="btn link" id="eBack">Revenir aux colonnes</button>' : ''}</div>${footer(L, E.length, origine)}`;
+        const a = $('#eAll', out); if (a) a.onclick = () => { all = true; draw(); };
+        const b = $('#eBack', out); if (b) b.onclick = back;
+        bindGo(L, origine); };
+      if (!E.length) { out.innerHTML = '<p class="small">Aucun e-mail trouvé.</p>'; return; }
+      draw();
+    }
+    const footer = (L, tot, origine) => `<div class="card"><div class="f" style="margin:0 0 8px"><label class="small">Étiquette à ajouter (facultatif)</label><input id="iTag" placeholder="ex. Salon Batimat, Réseau Eiffage…"></div>
+      <p class="small" style="margin:0 0 6px"><b>${L.length}</b> contact${L.length > 1 ? 's' : ''} avec e-mail${tot > L.length ? ` sur ${tot} ligne${tot > 1 ? 's' : ''}` : ''} · origine « ${esc(origine)} »</p>
+      <button class="btn primary" id="iGo" ${L.length ? '' : 'disabled'}>Importer ${L.length} contact${L.length > 1 ? 's' : ''}</button><div class="prog hidden" id="iPr"><i></i></div><p class="small mut" id="iSt"></p></div>`;
+    function bindGo(L, origine) {
+      const g = $('#iGo', out); if (!g) return;
+      g.onclick = async () => {
+        g.disabled = true; $$('select,#iTag,#mOnly', out).forEach(x => x.disabled = true); $('#iPr', out).classList.remove('hidden');
+        const tag = ($('#iTag', out).value || '').trim(), tags = uniq(['Import', origine === 'Google Contacts' ? 'Google Contacts' : null, tag || null].filter(Boolean));
+        let done = 0, nouv = 0, fus = 0, err = 0, i = 0;
         const worker = async () => { while (i < L.length) { const c = L[i++];
-          const p = { email: c.email, prenom: c.prenom, nom: c.nom, entreprise: c.entreprise, metier: c.metier, telephone: c.telephone, origine: 'Google Contacts', tags: ['Google Contacts'], type_contact: PERSO.test(c.email) ? 'Particulier' : 'Pro', notes: c.autres.length ? 'Autres e-mails : ' + c.autres.join(', ') : '' };
+          const notes = [c.notes.join(' · '), c.autres.length ? 'Autres e-mails : ' + c.autres.join(', ') : ''].filter(Boolean).join('\n');
+          const p = { email: c.email, prenom: c.prenom, nom: c.nom, entreprise: c.entreprise, metier: c.metier, ville: c.ville, telephone: c.telephone, origine, tags, type_contact: PERSO.test(c.email) ? 'Particulier' : 'Pro', notes };
           const { data, error } = await sb.rpc('crm_ajouter', { p }); if (error) err++; else if (data?.fusionne) fus++; else nouv++;
-          done++; $('#iPr i', d).style.width = Math.round(done / L.length * 100) + '%'; $('#iSt', d).textContent = `${done} / ${L.length}`; } };
-        await Promise.all([worker(), worker(), worker(), worker()]);
-        $('#iSt', d).innerHTML = `✅ <b>${nouv}</b> ajoutés · <b>${fus}</b> déjà présents (complétés)${err ? ` · ${err} erreurs` : ''}`;
-        sb.rpc('crm_notifier', { p_titre: 'Import Google Contacts', p_corps: `${nouv} ajoutés, ${fus} complétés`, p_genre: 'import' }).then(() => setTimeout(bellCount, 1500));
+          done++; $('#iPr i', out).style.width = Math.round(done / L.length * 100) + '%'; $('#iSt', out).textContent = `${done} / ${L.length}`; } };
+        await Promise.all([1, 2, 3, 4, 5].map(worker));
+        $('#iSt', out).innerHTML = `✅ <b>${nouv}</b> ajouté${nouv > 1 ? 's' : ''} · <b>${fus}</b> déjà présent${fus > 1 ? 's' : ''} (complété${fus > 1 ? 's' : ''})${err ? ` · ${err} erreur${err > 1 ? 's' : ''}` : ''}`;
+        g.textContent = 'Terminé'; toast(`${nouv} contact${nouv > 1 ? 's' : ''} ajouté${nouv > 1 ? 's' : ''}`);
+        sb.rpc('crm_notifier', { p_titre: 'Import terminé', p_corps: `${origine} : ${nouv} ajoutés, ${fus} complétés${tag ? ' · ' + tag : ''}`, p_genre: 'import' }).then(() => setTimeout(bellCount, 1500));
         await refreshMeta(); load(true);
       };
-    };
+    }
   }
+
+
+  /* ---------- exclusion des envois : modifiable dans la fiche et en lot ---------- */
+  const MOTIFS = ['exclu à la main', 'Particulier', 'Ne veut pas être contacté', 'Adresse en échec', 'Concurrent', 'Doublon', 'Autre'];
+  const _renderFiche = renderFiche;
+  renderFiche = function (d, c) {
+    _renderFiche.apply(this, arguments);
+    const qa = $('.qa', d); if (!qa || $('#xExc', d)) return;
+    const exc = !!(c.a_exclure || c.desinscrit);
+    const info = exc ? (c.desinscrit ? 'Ne plus contacter' + (c.motif_exclusion && !/ne plus contacter/i.test(c.motif_exclusion) ? ' · ' + c.motif_exclusion : '') : (c.motif_exclusion || 'Exclu')) : 'Reçoit les campagnes e-mail';
+    qa.insertAdjacentHTML('afterend', `<div class="card xexc${exc ? ' on' : ''}" id="xExc"><label class="tog" style="border:0;min-height:30px"><span><b>Exclu des envois</b><br><span class="small mut">${esc(info)}</span></span><input type="checkbox" id="xExcT" ${exc ? 'checked' : ''} aria-label="Exclu des envois"></label>
+      ${exc && !c.desinscrit ? `<div class="f" style="margin:6px 0 0"><label class="small">Motif</label><select id="xMot">${uniq([c.motif_exclusion, ...MOTIFS].filter(Boolean)).map(m => `<option ${m === c.motif_exclusion ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select></div>` : ''}
+      ${c.blacklist ? '<p class="small" style="margin:6px 0 0;color:#B42318">Adresse en liste noire (e-mails en échec) : elle reste bloquée pour les envois.</p>' : ''}</div>`);
+    $('#xExcT', d).onchange = e => {
+      const on = e.target.checked;
+      if (!on && c.desinscrit && !confirm('Cette personne avait demandé à ne plus être contactée. La réintégrer quand même ?')) { e.target.checked = true; return; }
+      save(d, on ? { id: c.id, a_exclure: true, motif_exclusion: 'exclu à la main' } : { id: c.id, a_exclure: false, desinscrit: false }, true);
+    };
+    const mo = $('#xMot', d); if (mo) mo.onchange = () => save(d, { id: c.id, a_exclure: true, motif_exclusion: mo.value }, true);
+  };
+  const _renderBulk = renderBulk;
+  renderBulk = function () {
+    _renderBulk.apply(this, arguments);
+    const b = $('#bExc'); if (!b || $('#bInc')) return;
+    b.insertAdjacentHTML('afterend', `<button class="btn" id="bInc">Réintégrer</button>`);
+    $('#bInc').onclick = async () => {
+      const n = S.sel.size;
+      try { const k = await rpc('crm_lot', { p_ids: Array.from(S.sel), p_action: 'inclure', p_valeur: null });
+        toast(`${k} réintégré${k > 1 ? 's' : ''}${k < n ? ` · ${n - k} désinscrit${n - k > 1 ? 's' : ''} ou en échec restent exclus` : ''}`); await refreshMeta(); load(true);
+      } catch (e) { toast(errMsg(e)); }
+    };
+  };
 
   if ($('.top-actions')) injectTop();
   if ($('#side')) renderSide();

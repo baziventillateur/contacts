@@ -1,7 +1,7 @@
 // Contacts : l'appli s'ouvre même hors ligne (coquille en cache) ; les données viennent toujours de Supabase.
 // Gère aussi les notifications push (même principe que CovoitGo).
-const C = 'contacts-v1.1.0';
-const SHELL = ['./', 'index.html', 'app.css?v=1.1.0', 'app.js?v=1.1.0', 'extras.js?v=1.1.0', 'manifest.webmanifest', 'icon-192.png'];
+const C = 'contacts-v1.2.0';
+const SHELL = ['./', 'index.html', 'app.css?v=1.2.0', 'app.js?v=1.2.0', 'extras.js?v=1.2.0', 'manifest.webmanifest', 'icon-192.png'];
 self.addEventListener('install', e => { self.skipWaiting(); e.waitUntil(caches.open(C).then(c => c.addAll(SHELL)).catch(() => {})); });
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys().then(ks => Promise.all(ks.filter(k => k !== C).map(k => caches.delete(k)))).then(() => self.clients.claim())
