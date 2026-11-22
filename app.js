@@ -1,5 +1,5 @@
 /* Contacts — appli de contacts centralisés (Supabase, espace crm du projet Malino) */
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.6.0';
 const SB_URL = 'https://fcfkfuqzgsmckkxqfwuo.supabase.co';
 const SB_KEY = 'sb_publishable_a3SNrQOSCH20T5sKsJxuAA_s7H4yCSR';
 const sb = supabase.createClient(SB_URL, SB_KEY, {
@@ -152,7 +152,8 @@ const activeCount = f => ['origines', 'statuts', 'profils', 'secteurs', 'tags'].
   + ['joignables', 'avec_tel', 'accord', 'favoris', 'exclus'].filter(k => f[k]).length;
 /* étiquettes coloriées : une couleur stable par étiquette */
 const TAGC = [['#E2EAFB', '#1F4FBF'], ['#DDF3EE', '#0F6B5C'], ['#FDEBD8', '#9A4A00'], ['#EFE4FB', '#5B2E91'], ['#FBE3E3', '#A12D2D'], ['#E6F4FA', '#0B6A8C'], ['#FFF4CC', '#7A5A00'], ['#E9F5E1', '#3C6E1E'], ['#FCE7F3', '#9D2463'], ['#ECEEF1', '#4A505C']];
-function tagStyle(t) { let h = 0; for (const ch of String(t || '').toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0; const c = TAGC[h % TAGC.length]; return `background:${c[0]};color:${c[1]}`; }
+function tagColors(t) { let h = 0; for (const ch of String(t || '').toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return TAGC[h % TAGC.length]; }
+function tagStyle(t) { const c = tagColors(t); return `background:${c[0]};color:${c[1]}`; }
 const campName = s => ((S.camps?.campagnes || []).find(c => c.slug === s) || {}).nom || s;
 const campShort = n => String(n || '').replace(/^(PaceApp|Malino) · /, '').replace(/[«»]/g, '').trim();
 const campDot = (c, big) => `<i class="cdot${big ? ' big' : ''}" style="background:${esc(c || '#94A0B8')}"></i>`;
@@ -469,7 +470,9 @@ function renderChips() {
   if (S.f.exclus) add('Exclus', () => S.f.exclus = false);
   const el = $('#achips');
   el.innerHTML = c.map((x, i) => `<button class="chip t-acc" data-i="${i}" aria-label="Retirer le filtre ${esc(x.lab)}">${esc(x.lab)} ✕</button>`).join('')
-    + (c.length > 1 ? '<button class="btn link small" id="clrF">Tout effacer</button>' : '');
+    + (c.length > 1 ? '<button class="btn link small" id="clrF">Tout effacer</button>' : '')
+    + (sendable() && S.total ? `<div class="sendhint">${ico('send')}<span>Coche les contacts à qui envoyer « ${esc(campShort(campName(S.f.campagne_non_recue)))} »</span><button class="btn small" id="selAll">Tout sélectionner (${fmtN(S.rows.length)})</button></div>` : '');
+  const sa = $('#selAll', el); if (sa) sa.onclick = () => { S.rows.forEach(r => { S.sel.add(r.id); paintPick(r.id); }); syncAllBox(); renderBulk(); };
   $$('[data-i]', el).forEach(b => b.onclick = () => { c[+b.dataset.i].rm(); filtersChanged(); });
   const clr = $('#clrF'); if (clr) clr.onclick = () => { const tri = S.f.tri; S.f = emptyF(); S.f.tri = tri; S.f.q = $('#q').value; filtersChanged(); };
 }
@@ -597,7 +600,8 @@ function renderBulk() {
   el.innerHTML = `<b>${n} sélectionné${n > 1 ? 's' : ''}</b>
     <label class="sr" for="bStat">Changer le statut</label>
     <select id="bStat"><option value="">Statut…</option>${STATUTS.map(s => `<option>${esc(s)}</option>`).join('')}</select>
-    <button class="btn" id="bTag">${ico('tag')}Étiquette</button>
+    ${sendable() ? `<button class="btn send" id="bSend">${ico('send')}Envoyer la campagne</button>` : ''}
+    <button class="btn" id="bTag">${ico('tag')}Étiquettes</button>
     <button class="btn" id="bFav">${ico('star')}Favori</button>
     <button class="btn" id="bExc">${ico('ban')}Exclure</button>
     <button class="btn" id="bExp">${ico('down')}Exporter</button>
@@ -609,7 +613,8 @@ function renderBulk() {
     catch (e) { toast(errMsg(e)); }
   };
   $('#bStat').onchange = e => { if (e.target.value) run('statut', e.target.value, 'Statut mis à jour'); };
-  $('#bTag').onclick = () => { const t = prompt('Étiquette à ajouter :'); if (t && t.trim()) run('tag+', t.trim(), 'Étiquette ajoutée'); };
+  $('#bTag').onclick = () => openTagLot(ids());
+  const bs = $('#bSend'); if (bs) bs.onclick = () => openEnvoi(S.f.campagne_non_recue, ids());
   $('#bFav').onclick = () => run('favori', 'true', 'Ajouté aux favoris');
   $('#bExc').onclick = () => run('exclure', 'exclu à la main', 'Exclus des envois');
   $('#bExp').onclick = () => downloadCsv(S.rows.filter(r => S.sel.has(r.id)), 'selection');
@@ -661,24 +666,78 @@ async function openFiche(id) {
   if (!c) { $('.dbody', d).innerHTML = '<p class="empty">Contact introuvable.</p>'; return; }
   renderFiche(d, c);
 }
-function tagEditor(tags) {
-  return `<div class="tagbox" id="tagbox">${tags.map(t => `<span class="chip" style="${tagStyle(t)}" data-tag="${esc(t)}">${esc(t)}<button type="button" aria-label="Retirer ${esc(t)}">✕</button></span>`).join('')}
-    <label class="sr" for="tagIn">Ajouter une étiquette</label><input id="tagIn" placeholder="+ étiquette (Entrée)" list="tagList"></div>
-    <datalist id="tagList">${(S.stats?.tags || []).map(t => `<option value="${esc(t.v)}">`).join('')}</datalist>`;
+/* ---------- étiquettes : Tagify (github.com/yairEO/tagify), chargé seulement quand on en a besoin ---------- */
+let TAGIFY = null;
+function loadTagify() {
+  if (window.Tagify) return Promise.resolve(window.Tagify);
+  if (TAGIFY) return TAGIFY;
+  const base = 'https://cdn.jsdelivr.net/npm/@yaireo/tagify@4.39.0/dist/';
+  TAGIFY = new Promise((res, rej) => {
+    const l = document.createElement('link'); l.rel = 'stylesheet'; l.href = base + 'tagify.css'; l.crossOrigin = 'anonymous'; document.head.appendChild(l);
+    const sc = document.createElement('script'); sc.src = base + 'tagify.js'; sc.crossOrigin = 'anonymous';
+    sc.onload = () => res(window.Tagify); sc.onerror = () => { TAGIFY = null; rej(new Error('Tagify indisponible')); };
+    document.head.appendChild(sc);
+  });
+  return TAGIFY;
 }
-function bindTagEditor(root) {
-  const box = $('#tagbox', root), inp = $('#tagIn', root);
-  const addTag = v => {
-    v = v.trim().replace(/,$/, ''); if (!v) return;
-    if ($$('[data-tag]', box).some(x => x.dataset.tag.toLowerCase() === v.toLowerCase())) return;
-    const s = document.createElement('span'); s.className = 'chip'; s.style.cssText = tagStyle(v); s.dataset.tag = v;
-    s.innerHTML = `${esc(v)}<button type="button" aria-label="Retirer ${esc(v)}">✕</button>`;
-    box.insertBefore(s, inp.previousElementSibling);
+const SUGG = new Map(); // suggestions déjà calculées pendant la session
+/* champ d'étiquettes : on tape, il propose les étiquettes existantes ; « Créer » pour une nouvelle ; plusieurs à la fois ;
+   en dessous, les étiquettes que portent les contacts qui lui ressemblent (même domaine, même entreprise, même origine) */
+function tagPicker(host, init, ctxFn) {
+  const st = { tg: null, sug: [], key: '' };
+  host.classList.add('tpick');
+  host.innerHTML = `<div class="tsug hidden" aria-label="Étiquettes suggérées"></div><input class="tin" aria-label="Étiquettes" placeholder="Ajouter une étiquette…">`;
+  const inp = $('.tin', host), sug = $('.tsug', host);
+  inp.value = (init || []).join(', ');
+  const cur = () => st.tg ? st.tg.value.map(x => x.value) : inp.value.split(/[,;]/).map(x => x.trim()).filter(Boolean);
+  const drawSug = () => {
+    const have = new Set(cur().map(x => x.toLowerCase()));
+    const l = st.sug.filter(x => !have.has(String(x.tag).toLowerCase()));
+    sug.classList.toggle('hidden', !l.length);
+    sug.innerHTML = l.length ? `<span>Suggérées :</span>` + l.map(x => `<button type="button" data-sg="${esc(x.tag)}" title="${esc(x.raison)} : ${x.n} contact${x.n > 1 ? 's' : ''} sur ${x.total}">+ ${esc(x.tag)}</button>`).join('') : '';
   };
-  box.onclick = e => { const b = e.target.closest('button'); if (b) b.parentElement.remove(); else inp.focus(); };
-  inp.onkeydown = e => { if (e.key === 'Enter' || e.key === ',') { e.preventDefault(); addTag(inp.value); inp.value = ''; } };
-  inp.onchange = () => { if (inp.value) { addTag(inp.value); inp.value = ''; } };
-  return () => { if (inp.value.trim()) { addTag(inp.value); inp.value = ''; } return $$('[data-tag]', box).map(x => x.dataset.tag); };
+  sug.onclick = e => { const b = e.target.closest('[data-sg]'); if (b) add([b.dataset.sg]); };
+  const add = tags => { if (st.tg) st.tg.addTags(tags); else inp.value = [...new Set(cur().concat(tags))].join(', '); drawSug(); };
+  const suggest = async () => {
+    const c = Object.assign({}, typeof ctxFn === 'function' ? ctxFn() : (ctxFn || {}));
+    const key = JSON.stringify(c);
+    if (!c.email && !c.entreprise && !c.origine && !(c.emails || []).length) { st.sug = []; return drawSug(); }
+    if (key === st.key) return drawSug();
+    st.key = key;
+    try {
+      if (!SUGG.has(key)) SUGG.set(key, await rpc('crm_tags_suggeres', { p: c }) || []);
+      if (st.key === key) { st.sug = SUGG.get(key); drawSug(); }
+    } catch (e) { st.sug = []; drawSug(); }
+  };
+  loadTagify().then(Tagify => {
+    if (!host.isConnected) return;
+    const tg = new Tagify(inp, {
+      whitelist: (S.stats?.tags || []).map(t => t.v), enforceWhitelist: false, editTags: false, duplicates: false,
+      delimiters: ',|;', placeholder: 'Ajouter une étiquette…',
+      dropdown: { enabled: 0, maxItems: 50, closeOnSelect: false, highlightFirst: true, fuzzySearch: true, caseSensitive: false },
+      transformTag: d => { const c = tagColors(d.value); d.style = `--tag-bg:${c[0]};--tag-hover:${c[0]};--tag-text-color:${c[1]};--tag-remove-btn-color:${c[1]}`; },
+      templates: { dropdownItemNoMatch(data) { return `<div class="${this.settings.classNames.dropdownItem} tcreate" value="noMatch" tabindex="0" role="option">+ Créer « <b>${esc(data.value)}</b> »</div>`; } }
+    });
+    tg.on('dropdown:select', e => {
+      if (e.detail.elm && e.detail.elm.getAttribute('value') === 'noMatch') { const v = (tg.state.inputText || '').trim(); if (v) tg.addTags([v], true); tg.dropdown.hide(); }
+    });
+    tg.on('add', drawSug); tg.on('remove', drawSug);
+    // téléphone : le champ remonte au milieu de l'écran pour laisser la place à la liste au-dessus du clavier
+    tg.on('focus', () => { if (!wide()) setTimeout(() => host.scrollIntoView({ block: 'center', behavior: 'smooth' }), 250); });
+    st.tg = tg;
+  }).catch(() => { /* hors ligne : le champ texte simple reste utilisable (étiquettes séparées par des virgules) */ });
+  suggest();
+  return { get: cur, add, suggest, lock: on => { if (st.tg) st.tg.setReadonly(!!on); else inp.disabled = !!on; } };
+}
+function tagEditor(tags) {
+  return `<div id="tagbox" data-tags="${esc(JSON.stringify(tags || []))}"></div>`;
+}
+function bindTagEditor(root, extra) {
+  const box = $('#tagbox', root);
+  const val = n => { const el = $(`[name=${n}]`, root); return el ? el.value.trim() : ''; };
+  const tp = tagPicker(box, JSON.parse(box.dataset.tags || '[]'), () => ({ id: extra && extra.id || null, email: val('email'), entreprise: val('entreprise'), origine: (extra && extra.origine) || val('origine') }));
+  ['email', 'entreprise', 'origine'].forEach(n => { const el = $(`[name=${n}]`, root); if (el) el.addEventListener('change', tp.suggest); });
+  return tp.get;
 }
 function formFields(c) {
   const v = k => esc(c[k] ?? '');
@@ -753,7 +812,7 @@ function renderFiche(d, c) {
     </form>
     <div class="dfoot"><span class="small mut" id="dMsg" style="margin-right:auto;align-self:center"></span>
       <button class="btn" type="button" id="dCancel">Fermer</button><button class="btn primary" type="button" id="dSave">Enregistrer</button></div>`;
-  const getTags = bindTagEditor(d);
+  const getTags = bindTagEditor(d, { id: c.id, origine: c.origine });
   loadEnvois(d, c);
   $('#dX', d).onclick = closeDrawer;
   $('#dCancel', d).onclick = closeDrawer;
@@ -1061,6 +1120,87 @@ async function openApercu(q) {
   }
 }
 function closeApercu() { const w = $('#mveil'); if (w) w.remove(); }
+
+/* petite fenêtre (étiquettes en lot, envoi de campagne) */
+function dialog(titre, corps) {
+  closeApercu();
+  const w = document.createElement('div'); w.className = 'mveil'; w.id = 'mveil';
+  w.innerHTML = `<div class="modal mini" role="dialog" aria-modal="true" aria-label="${esc(titre)}">
+    <div class="mhead"><div class="mt"><b>${esc(titre)}</b></div><button class="icon bare" id="mX" aria-label="Fermer">${ico('x')}</button></div>
+    <div class="mcorps">${corps}</div></div>`;
+  document.body.appendChild(w);
+  w.onclick = e => { if (e.target === w) closeApercu(); };
+  $('#mX', w).onclick = closeApercu;
+  return w;
+}
+function openTagLot(idsSel) {
+  const n = idsSel.length;
+  const w = dialog(`Étiquettes pour ${n} contact${n > 1 ? 's' : ''}`, `<p class="small mut" style="margin:0 0 8px">Choisis des étiquettes existantes ou tape-en une nouvelle. Elles s'ajoutent à celles que les contacts ont déjà.</p>
+    <div id="lotTags"></div><div class="mact"><button class="btn" id="lCancel">Annuler</button><button class="btn primary" id="lGo">Ajouter</button></div>`);
+  const emails = S.rows.filter(r => idsSel.includes(r.id) && r.email).slice(0, 200).map(r => r.email);
+  const tp = tagPicker($('#lotTags', w), [], () => ({ emails }));
+  $('#lCancel', w).onclick = closeApercu;
+  $('#lGo', w).onclick = async () => {
+    const tags = tp.get(); if (!tags.length) return toast('Choisis au moins une étiquette');
+    const g = $('#lGo', w); g.disabled = true; g.textContent = 'Ajout…';
+    try {
+      for (const t of tags) await rpc('crm_lot', { p_ids: idsSel, p_action: 'tag+', p_valeur: t });
+      closeApercu(); toast(`${tags.length > 1 ? tags.length + ' étiquettes ajoutées' : 'Étiquette ajoutée'} à ${n} contact${n > 1 ? 's' : ''}`);
+      await refreshMeta(); load(true);
+    } catch (e) { g.disabled = false; g.textContent = 'Ajouter'; toast(errMsg(e)); }
+  };
+}
+
+/* envoyer une campagne aux contacts cochés (ceux qui ne l'ont pas reçue) : vérification, aperçu, puis confirmation */
+const ENVOYABLES = ['malino-arabe-2311', 'malino-eiffage', 'malino-familles-btp'];
+const sendable = () => S.page === 'contacts' && ENVOYABLES.includes(S.f.campagne_non_recue);
+async function fnCamp(body) {
+  const { data: { session } } = await sb.auth.getSession();
+  const res = await fetch(SB_URL + '/functions/v1/crm-campagnes', { method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: SB_KEY, Authorization: 'Bearer ' + (session ? session.access_token : SB_KEY) },
+    body: JSON.stringify(body) });
+  const r = await res.json().catch(() => ({}));
+  if (!res.ok || r.erreur) throw new Error(r.erreur || ('Erreur ' + res.status));
+  return r;
+}
+const MOTIFS = { deja: 'l’ont déjà reçue', recent: 'ont reçu un autre mail il y a moins de 7 jours', exclu: 'sont exclus des envois', stop: 'ont répondu STOP',
+  sans_email: 'n’ont pas d’e-mail valable', entreprise: 'ne sont pas d’une entreprise prévue pour ce mail', doublon: 'sont en double' };
+async function openEnvoi(slug, idsSel) {
+  const nom = campShort(campName(slug));
+  const w = dialog(`Envoyer « ${nom} »`, `<div id="eCorps"><div class="mload" style="position:static;padding:30px 0"><span class="ldots"><i></i><i></i><i></i></span></div></div>`);
+  let ecart = true, r = null;
+  const draw = () => {
+    const ok = r.ok.length, ex = Object.entries(r.ecartes).filter(([, v]) => v);
+    $('#eCorps', w).innerHTML = `<div class="ebig ${ok ? '' : 'none'}"><b>${fmtN(ok)}</b><span>personne${ok > 1 ? 's' : ''} ${ok > 1 ? 'vont' : 'va'} recevoir ce mail</span></div>
+      ${ex.length ? `<ul class="eex">${ex.map(([k, v]) => `<li><b>${fmtN(v)}</b> écartée${v > 1 ? 's' : ''} : ${esc(MOTIFS[k] || k)}</li>`).join('')}</ul>` : ''}
+      ${r.demandes >= 300 ? '<p class="small mut">300 contacts au maximum par envoi : relance l’envoi pour les suivants.</p>' : ''}
+      <label class="echk"><input type="checkbox" id="eEc" ${ecart ? 'checked' : ''}> Laisser au moins 7 jours après un autre mail (conseillé)</label>
+      ${r.apercu ? `<button class="btn link small" id="eVoir" style="padding:0">${ico('eye')}Voir le mail (exemple : ${esc(r.apercu.email)})</button><div id="eFr" class="efr hidden"></div>` : ''}
+      <div class="mact"><button class="btn" id="eCancel">Annuler</button><button class="btn primary" id="eGo" ${ok ? '' : 'disabled'}>${ok ? `Envoyer à ${fmtN(ok)} personne${ok > 1 ? 's' : ''}` : 'Personne à qui envoyer'}</button></div>`;
+    $('#eCancel', w).onclick = closeApercu;
+    $('#eEc', w).onchange = e => { ecart = e.target.checked; prep(); };
+    const v = $('#eVoir', w);
+    if (v) v.onclick = () => {
+      const box = $('#eFr', w); box.classList.toggle('hidden');
+      if (!box.firstChild) { const f = document.createElement('iframe'); f.className = 'mframe'; f.title = 'Aperçu du mail'; f.setAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox'); f.srcdoc = String(r.apercu.html).replace(/<head([^>]*)>/i, '<head$1><base target="_blank">'); box.appendChild(f); }
+    };
+    $('#eGo', w).onclick = async () => {
+      const g = $('#eGo', w); g.disabled = true; g.textContent = 'Envoi en cours…'; $('#eCancel', w).disabled = true;
+      try {
+        const x = await fnCamp({ action: 'ajouter', campagne: slug, ids: idsSel, ecart7: ecart, confirme: true });
+        closeApercu();
+        toast(x.envoyes ? `${x.envoyes} mail${x.envoyes > 1 ? 's' : ''} envoyé${x.envoyes > 1 ? 's' : ''}` : 'Aucun mail envoyé');
+        S.sel.clear(); renderBulk();
+        refreshMeta(); load(true);
+      } catch (e) { g.disabled = false; g.textContent = 'Réessayer'; $('#eCancel', w).disabled = false; toast(errMsg(e)); }
+    };
+  };
+  const prep = async () => {
+    try { r = await fnCamp({ action: 'preparer', campagne: slug, ids: idsSel, ecart7: ecart }); if ($('#mveil')) draw(); }
+    catch (e) { $('#eCorps', w).innerHTML = `<p class="empty">${esc(errMsg(e))}</p>`; }
+  };
+  prep();
+}
 
 async function loadEnvois(d, c) {
   const box = $('#envBox', d); if (!box) return;

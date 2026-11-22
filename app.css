@@ -320,3 +320,36 @@ body.fab-off .fab,body.fab-off .fab2{transform:translateY(30px) scale(.4);opacit
 .skel .txt i:last-child{width:68%}
 @keyframes skl{from{background-position:200% 0}to{background-position:-200% 0}}
 @media (prefers-reduced-motion:reduce){.skel .txt i{animation:none}}
+
+/* v1.6.0 : étiquettes (Tagify) — compactes, mêmes couleurs que dans la liste */
+.tpick .tagify{--tags-border-color:var(--line);--tags-hover-border-color:var(--acc-line);--tags-focus-border-color:var(--acc);--tag-pad:.22em .55em;--tag-inset-shadow-size:1.5em;--tag-border-radius:11px;--tag-remove-bg:rgba(0,0,0,.07);--tag-remove-btn-bg--hover:rgba(0,0,0,.12);--placeholder-color:#9AA1AD;--placeholder-color-focus:#B7BCC6;--input-color:var(--ink);width:100%;border-radius:8px;min-height:34px;font-size:13px;padding:1px 2px;background:var(--panel);line-height:1.2}
+.tpick .tagify__tag{margin:3px 0 3px 4px;font-weight:600;font-size:12px}
+.tpick .tagify__input{margin:3px 4px;padding:.25em .3em;min-width:110px}
+.tpick .tagify__tag__removeBtn{font-size:13px;margin-right:3px}
+.tpick input.tin{width:100%;height:34px;border:1px solid var(--line);border-radius:8px;padding:0 9px;font-size:13px}
+body .tagify__dropdown{font-family:Inter,system-ui,sans-serif;--tagify-dd-color-primary:var(--acc-bg);--tagify-dd-text-color:var(--ink);--tagify-dd-item-pad:.45em .7em;--tagify-dd-max-height:260px;z-index:80}
+body .tagify__dropdown .tagify__dropdown__wrapper{border-radius:10px;border:1px solid var(--line);box-shadow:0 12px 30px rgba(0,0,0,.14)}
+body .tagify__dropdown .tagify__dropdown__item{font-size:13px;border-radius:6px;margin:1px 3px;color:var(--ink)}
+body .tagify__dropdown .tagify__dropdown__item--active{background:var(--acc-bg);color:var(--ink)}
+body .tagify__dropdown .tagify__dropdown__item.tcreate{color:var(--acc);font-weight:600}
+.tsug{display:flex;flex-wrap:wrap;gap:5px;align-items:center;margin:2px 0 6px;font-size:11.5px;color:var(--mut)}
+.tsug>span{margin-right:2px}
+.tsug button{height:24px;padding:0 9px;border-radius:12px;border:1px dashed var(--acc-line);background:var(--acc-bg);color:var(--acc);font:600 11.5px Inter,system-ui,sans-serif;cursor:pointer}
+.tsug button:hover{border-style:solid}
+/* fenêtres compactes : étiquettes en lot, envoi de campagne */
+.modal.mini{height:auto;max-height:92vh}
+.mcorps{padding:12px 14px 14px;overflow:auto;display:flex;flex-direction:column;gap:9px}
+.mact{display:flex;justify-content:flex-end;gap:8px;margin-top:6px}
+.ebig{display:flex;align-items:baseline;gap:8px;padding:10px 12px;border-radius:10px;background:var(--acc-bg);color:var(--acc)}
+.ebig b{font-size:24px;line-height:1}.ebig span{font-size:13px;font-weight:600}
+.ebig.none{background:var(--line2);color:var(--mut)}
+.eex{margin:0;padding:0 0 0 18px;font-size:12.5px;color:var(--mut);display:flex;flex-direction:column;gap:3px}
+.eex b{color:var(--ink)}
+.echk{display:flex;gap:7px;align-items:center;font-size:12.5px}
+.efr{height:min(56vh,520px);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.bulk .btn.send{background:var(--acc);border-color:var(--acc)}
+.sendhint{flex-basis:100%;display:flex;align-items:center;gap:7px;margin-top:4px;padding:6px 8px;border-radius:9px;background:var(--acc-bg);color:var(--acc);font-size:12px;font-weight:600}
+.sendhint svg{width:15px;height:15px;stroke:currentColor;fill:none;stroke-width:1.9;flex:none}
+.sendhint span{flex:1;min-width:0}
+.sendhint .btn{height:26px;font-size:11.5px;background:var(--panel)}
+@media (max-width:899px){.modal.mini{height:auto;max-height:100%;border-radius:14px 14px 0 0;align-self:flex-end}.mveil:has(.modal.mini){align-items:flex-end}}

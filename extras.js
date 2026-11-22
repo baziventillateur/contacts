@@ -374,14 +374,18 @@
       if (!E.length) { out.innerHTML = '<p class="small">Aucun e-mail trouvé.</p>'; return; }
       draw();
     }
-    const footer = (L, tot, origine) => `<div class="card"><div class="f" style="margin:0 0 8px"><label class="small">Étiquette à ajouter (facultatif)</label><input id="iTag" placeholder="ex. Salon Batimat, Réseau Eiffage…"></div>
+    const footer = (L, tot, origine) => `<div class="card"><div class="f" style="margin:0 0 8px"><span class="small">Étiquettes à ajouter (facultatif)</span><div id="iTagP"></div></div>
       <p class="small" style="margin:0 0 6px"><b>${L.length}</b> contact${L.length > 1 ? 's' : ''} avec e-mail${tot > L.length ? ` sur ${tot} ligne${tot > 1 ? 's' : ''}` : ''} · origine « ${esc(origine)} »</p>
       <button class="btn primary" id="iGo" ${L.length ? '' : 'disabled'}>Importer ${L.length} contact${L.length > 1 ? 's' : ''}</button><div class="prog hidden" id="iPr"><i></i></div><p class="small mut" id="iSt"></p></div>`;
     function bindGo(L, origine) {
       const g = $('#iGo', out); if (!g) return;
+      // étiquettes : on garde celles déjà choisies si la liste est redessinée ; suggestions d'après les domaines des e-mails importés
+      const host = $('#iTagP', out), avant = out._tp ? out._tp.get() : [];
+      const tp = host ? tagPicker(host, avant, () => ({ emails: L.slice(0, 200).map(c => c.email) })) : null;
+      out._tp = tp;
       g.onclick = async () => {
-        g.disabled = true; $$('select,#iTag,#mOnly', out).forEach(x => x.disabled = true); $('#iPr', out).classList.remove('hidden');
-        const tag = ($('#iTag', out).value || '').trim(), tags = uniq(['Import', origine === 'Google Contacts' ? 'Google Contacts' : null, tag || null].filter(Boolean));
+        g.disabled = true; $$('select,#mOnly', out).forEach(x => x.disabled = true); if (tp) tp.lock(true); $('#iPr', out).classList.remove('hidden');
+        const extra = tp ? tp.get() : [], tag = extra.join(', '), tags = uniq(['Import', origine === 'Google Contacts' ? 'Google Contacts' : null, ...extra].filter(Boolean));
         let done = 0, nouv = 0, fus = 0, err = 0, i = 0;
         const worker = async () => { while (i < L.length) { const c = L[i++];
           const notes = [c.notes.join(' · '), c.autres.length ? 'Autres e-mails : ' + c.autres.join(', ') : ''].filter(Boolean).join('\n');
