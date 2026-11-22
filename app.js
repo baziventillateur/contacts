@@ -1,5 +1,5 @@
 /* Contacts — appli de contacts centralisés (Supabase, espace crm du projet Malino) */
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.3.1';
 const SB_URL = 'https://fcfkfuqzgsmckkxqfwuo.supabase.co';
 const SB_KEY = 'sb_publishable_a3SNrQOSCH20T5sKsJxuAA_s7H4yCSR';
 const sb = supabase.createClient(SB_URL, SB_KEY, {
@@ -271,10 +271,18 @@ function shell() {
   let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(renderList, 150); });
   window.addEventListener('scroll', fabWatch, { passive: true });
 }
+/* « afficher plus » : au clic, ou tout seul quand on fait défiler jusqu'en bas (jamais en boucle) */
+function moreGo() {
+  const mb = $('#moreBtn');
+  if (!mb || mb.classList.contains('busy') || S.page !== 'contacts' || S.rows.length >= S.total) return;
+  mb.classList.add('busy');
+  load(false);
+}
 /* bulles flottantes (+, photo) : elles s'effacent en bas de la liste ou quand on descend, reviennent quand on remonte */
 let fabY = 0;
-function fabWatch() {
+function fabWatch(e) {
   const y = window.scrollY, h = document.documentElement.scrollHeight, v = window.innerHeight;
+  if (e && e.type === 'scroll' && y > fabY && y + v >= h - 400) moreGo();
   const bas = y + v >= h - 140 && h > v + 40;
   const descend = y > fabY + 6 && y > 120;
   const monte = y < fabY - 6;
@@ -424,7 +432,10 @@ function renderList() {
     renderBulk();
     return;
   }
+  const tw0 = $('.tablewrap', L), keepTop = tw0 ? tw0.scrollTop : 0, keepLeft = tw0 ? tw0.scrollLeft : 0;
   L.innerHTML = mode === 'table' ? tableHtml() : listHtml();
+  const tw = $('.tablewrap', L);
+  if (tw) { tw.scrollTop = keepTop; tw.scrollLeft = keepLeft; tw.addEventListener('scroll', () => { if (tw.scrollTop + tw.clientHeight >= tw.scrollHeight - 300) moreGo(); }, { passive: true }); }
   // interactions
   $$('[data-id]', L).forEach(el => el.onclick = e => {
     if (e.target.closest('a,input,[data-pick]')) return;
@@ -438,12 +449,7 @@ function renderList() {
   $('#more').innerHTML = left > 0
     ? `<button class="morebtn" id="moreBtn"><span class="lbl">Afficher ${Math.min(PAGE, left)} de plus</span><span class="sub">${fmtN(S.rows.length)} affichés sur ${fmtN(S.total)}</span><span class="ldots" aria-hidden="true"><i></i><i></i><i></i></span></button>`
     : `<div class="endlist"><span>✓</span>${S.total > 1 ? 'Les ' + fmtN(S.total) + ' contacts sont affichés' : 'Fin de la liste'}</div>`;
-  const mb = $('#moreBtn');
-  if (mb) {
-    const go = () => { if (mb.classList.contains('busy')) return; mb.classList.add('busy'); load(false); };
-    mb.onclick = go;
-    if ('IntersectionObserver' in window) { const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { io.disconnect(); go(); } }, { rootMargin: '0px 0px 200px 0px' }); io.observe(mb); }
-  }
+  const mb = $('#moreBtn'); if (mb) mb.onclick = moreGo;
   renderBulk();
   fabWatch();
 }
