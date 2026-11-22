@@ -1,18 +1,40 @@
-// Contacts : l'appli s'ouvre même hors ligne (coquille en cache) ; les données viennent toujours de Supabase.
+// Contacts : la coquille de l'appli (fichiers, bibliothèque Supabase, police) vient du cache du téléphone,
+// pour un lancement immédiat ; les données viennent toujours de Supabase (avec le cache local de l'appli).
 // Gère aussi les notifications push (même principe que CovoitGo).
-const C = 'contacts-v1.4.0';
-const SHELL = ['./', 'index.html', 'app.css?v=1.4.0', 'app.js?v=1.4.0', 'extras.js?v=1.4.0', 'manifest.webmanifest', 'icon-192.png'];
-self.addEventListener('install', e => { self.skipWaiting(); e.waitUntil(caches.open(C).then(c => c.addAll(SHELL)).catch(() => {})); });
+const C = 'contacts-v1.5.0';
+const LIB = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
+const SHELL = ['./', 'index.html', 'app.css?v=1.5.0', 'app.js?v=1.5.0', 'extras.js?v=1.5.0', 'manifest.webmanifest', 'icon-192.png'];
+const EXT = ['cdn.jsdelivr.net', 'fonts.googleapis.com', 'fonts.gstatic.com'];
+self.addEventListener('install', e => {
+  self.skipWaiting();
+  e.waitUntil(caches.open(C).then(c => Promise.all([c.addAll(SHELL), c.add(new Request(LIB, { mode: 'cors' })).catch(() => {})])).catch(() => {}));
+});
 self.addEventListener('activate', e => e.waitUntil(
   caches.keys().then(ks => Promise.all(ks.filter(k => k !== C).map(k => caches.delete(k)))).then(() => self.clients.claim())
 ));
+const garder = (r, res) => { if (res && (res.ok || res.type === 'opaque')) { const copy = res.clone(); caches.open(C).then(c => c.put(r, copy)); } return res; };
+// réponse du cache tout de suite, mise à jour en arrière-plan pour la prochaine ouverture
+const cacheDabord = (e, r) => caches.match(r).then(m => {
+  const net = fetch(r).then(res => garder(r, res)).catch(() => m);
+  if (m) { e.waitUntil(net); return m; }
+  return net;
+});
+// page : réseau si rapide (pour voir tout de suite une nouvelle version), sinon le cache au bout de 1,5 s
+const pageRapide = r => new Promise(resolve => {
+  let fini = false;
+  const t = setTimeout(() => caches.match(r).then(m => { if (m && !fini) { fini = true; resolve(m); } }), 1500);
+  fetch(r).then(res => { garder(r, res); if (!fini) { fini = true; clearTimeout(t); resolve(res); } })
+    .catch(() => caches.match(r).then(m => { if (!fini) { fini = true; clearTimeout(t); resolve(m || caches.match('./')); } }));
+});
 self.addEventListener('fetch', e => {
   const r = e.request;
-  if (r.method !== 'GET' || new URL(r.url).origin !== location.origin) return;
-  e.respondWith(fetch(r).then(res => {
-    if (res.ok) { const copy = res.clone(); caches.open(C).then(c => c.put(r, copy)); }
-    return res;
-  }).catch(() => caches.match(r).then(m => m || caches.match('./'))));
+  if (r.method !== 'GET') return;
+  const u = new URL(r.url);
+  if (EXT.includes(u.hostname)) return e.respondWith(cacheDabord(e, r));
+  if (u.origin !== location.origin) return; // Supabase : toujours le réseau
+  if (r.mode === 'navigate' || u.pathname.endsWith('/') || u.pathname.endsWith('.html')) return e.respondWith(pageRapide(r));
+  if (u.search.includes('v=') || /\.(png|svg|webmanifest)$/.test(u.pathname)) return e.respondWith(cacheDabord(e, r));
+  e.respondWith(fetch(r).then(res => garder(r, res)).catch(() => caches.match(r)));
 });
 self.addEventListener('push', e => {
   let d = {};

@@ -47,19 +47,24 @@
     const t = r.tags || [];
     return KB.filter(([k]) => t.includes(k)).map(([k, c, l, sh]) => `<span class="chip ${c}" title="${esc(k)}">${esc(court ? sh : l)}</span>`).join('');
   }
-  const _renderList = renderList;
-  renderList = function () {
-    _renderList.apply(this, arguments);
+  // badges ajoutés seulement aux lignes qui n'en ont pas encore (la liste grandit par le bas)
+  function addBadges() {
     const byId = new Map((S.rows || []).map(r => [r.id, r]));
-    $$('#list .row[data-id]').forEach(el => {
+    $$('#list .row[data-id]:not([data-xb])').forEach(el => {
+      el.dataset.xb = '1';
       const r = byId.get(+el.dataset.id); if (!r) return; const h = badgesFor(r); if (!h) return;
       const t = $('.txt', el); if (t && !$('.xb', t)) t.insertAdjacentHTML('beforeend', `<span class="xb">${h}</span>`);
     });
-    $$('#list tr[data-id]').forEach(el => {
+    $$('#list tr[data-id]:not([data-xb])').forEach(el => {
+      el.dataset.xb = '1';
       const r = byId.get(+el.dataset.id); if (!r) return; const h = badgesFor(r, true); if (!h) return;
       const n = $('td.name > div', el); if (n && !$('.xb', n)) n.insertAdjacentHTML('beforeend', `<span class="xb t">${h}</span>`);
     });
-  };
+  }
+  const _renderList = renderList;
+  renderList = function () { _renderList.apply(this, arguments); addBadges(); };
+  const _appendRows = appendRows;
+  appendRows = function () { _appendRows.apply(this, arguments); addBadges(); };
 
   /* ---------- en-tête : cloche, import ---------- */
   function injectTop() {

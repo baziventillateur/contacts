@@ -311,3 +311,12 @@ body.fab-off .fab,body.fab-off .fab2{transform:translateY(30px) scale(.4);opacit
 .mfoot{padding:7px 14px;border-top:1px solid var(--line2)}
 .cchip{cursor:default}
 @media (max-width:899px){.mveil{padding:0}.modal{width:100%;height:100%;border-radius:0}}
+
+/* v1.5.0 : squelette de chargement (premier lancement, sans cache) */
+.skel .row{pointer-events:none}
+.skel .av{background:var(--line2)!important}
+.skel .txt i{display:block;height:10px;border-radius:5px;background:linear-gradient(90deg,var(--line2) 25%,#F4F5F7 50%,var(--line2) 75%);background-size:200% 100%;animation:skl 1.2s linear infinite;margin:4px 0}
+.skel .txt i:first-child{width:46%;height:12px}
+.skel .txt i:last-child{width:68%}
+@keyframes skl{from{background-position:200% 0}to{background-position:-200% 0}}
+@media (prefers-reduced-motion:reduce){.skel .txt i{animation:none}}

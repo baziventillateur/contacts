@@ -1,5 +1,5 @@
 /* Contacts — appli de contacts centralisés (Supabase, espace crm du projet Malino) */
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.5.0';
 const SB_URL = 'https://fcfkfuqzgsmckkxqfwuo.supabase.co';
 const SB_KEY = 'sb_publishable_a3SNrQOSCH20T5sKsJxuAA_s7H4yCSR';
 const sb = supabase.createClient(SB_URL, SB_KEY, {
@@ -127,8 +127,26 @@ function errMsg(e) {
 async function rpc(name, args) {
   const { data, error } = await sb.rpc(name, args);
   if (error) throw error;
+  if (/^crm_(lot|supprimer|enregistrer|ajouter|vue_|campagne_enregistrer)/.test(name)) cachePut(c => { c.pages = {}; });
   return data;
 }
+/* ---------- cache local : l'écran s'affiche tout de suite avec la dernière liste connue, puis se met à jour ---------- */
+const CK = 'contacts-cache-v1';
+function cacheGet() {
+  try { const c = JSON.parse(localStorage.getItem(CK) || 'null'); return c && S.user && c.u === S.user.email ? c : null; } catch (e) { return null; }
+}
+function cachePut(fn) {
+  if (!S.user) return;
+  try {
+    const c = cacheGet() || { u: S.user.email, pages: {} };
+    fn(c);
+    const ks = Object.keys(c.pages || {}).sort((a, b) => (c.pages[b].t || 0) - (c.pages[a].t || 0));
+    ks.slice(8).forEach(k => delete c.pages[k]); // on garde les 8 dernières listes ouvertes
+    localStorage.setItem(CK, JSON.stringify(c));
+  } catch (e) { try { localStorage.removeItem(CK); } catch (e2) { } }
+}
+const cacheKey = f => JSON.stringify(f);
+const skeleton = () => `<div class="cards skel" aria-label="Chargement">${'<div class="row"><span class="av"></span><div class="txt"><i></i><i></i></div></div>'.repeat(8)}</div>`;
 const activeCount = f => ['origines', 'statuts', 'profils', 'secteurs', 'tags'].reduce((n, k) => n + f[k].length, 0)
   + (f.zone ? 1 : 0) + ['campagne_recue', 'campagne_non_recue', 'nb_campagnes'].filter(k => f[k]).length
   + ['joignables', 'avec_tel', 'accord', 'favoris', 'exclus'].filter(k => f[k]).length;
@@ -187,26 +205,38 @@ async function boot() {
   const { data: { session } } = await sb.auth.getSession();
   if (!session) return loginView('mail');
   S.user = session.user;
-  app.innerHTML = '<p class="empty">Chargement…</p>';
+  // affichage immédiat : compteurs et liste repris du cache, la liste et les compteurs se chargent en même temps
+  const c = cacheGet();
+  if (c && c.meta) { S.stats = c.meta.stats || null; S.vues = c.meta.vues || []; S.favs = c.meta.favs || []; S.camps = c.meta.camps || null; }
+  shell();
+  applyVue('tous');
   try {
     await refreshMeta();
   } catch (e) {
+    if (/JWT|session/i.test(e.message || '')) return logout();
     app.innerHTML = `<div class="login"><div class="logo">C</div><p>${esc(errMsg(e))}</p>
       <button class="btn" id="lo">Se déconnecter</button></div>`;
     $('#lo').onclick = logout;
-    return;
   }
-  shell();
-  applyVue('tous');
 }
-async function logout() { await sb.auth.signOut(); S.user = null; loginView('mail'); }
+async function logout() { try { localStorage.removeItem(CK); } catch (e) { } await sb.auth.signOut(); S.user = null; loginView('mail'); }
 async function refreshMeta() {
   const [stats, vues, favs] = await Promise.all([
     rpc('crm_stats'), rpc('crm_vues'), rpc('crm_liste', { p: { favoris: true, limit: 6, tri: 'nom' } })
   ]);
   S.stats = stats; S.vues = vues || []; S.favs = favs.rows || [];
-  try { S.camps = await rpc('crm_campagnes_vue'); } catch (e) { S.camps = S.camps || null; }
   if ($('#side')) renderSide();
+  cachePut(c => { c.meta = Object.assign(c.meta || {}, { stats, vues: S.vues, favs: S.favs }); });
+  refreshCamps(); // les chiffres des campagnes arrivent ensuite, sans bloquer la liste
+}
+function refreshCamps() {
+  return rpc('crm_campagnes_vue').then(k => {
+    S.camps = k;
+    if ($('#side')) renderSide();
+    if (S.page === 'campagnes' && $('#pCamp')) renderCampagnes(false);
+    cachePut(c => { c.meta = Object.assign(c.meta || {}, { camps: k }); });
+    return k;
+  }).catch(() => S.camps);
 }
 
 /* ---------- squelette ---------- */
@@ -260,7 +290,7 @@ function shell() {
   $('#newBtn').onclick = () => openForm(null);
   $('#fab').onclick = () => openForm(null);
   $('#filtBtn').onclick = openFilters;
-  $('#tri').onchange = e => { S.f.tri = e.target.value; load(true); };
+  $('#tri').onchange = e => { S.f.tri = e.target.value; load(true, true); };
   let t;
   $('#q').oninput = e => { clearTimeout(t); t = setTimeout(() => { S.f.q = e.target.value; load(true); }, 250); };
   $$('.seg button').forEach(b => b.onclick = () => { S.mode = b.dataset.mode; localStorage.setItem('contacts-mode', S.mode); renderList(); });
@@ -274,7 +304,7 @@ function shell() {
 /* « afficher plus » : au clic, ou tout seul quand on fait défiler jusqu'en bas (jamais en boucle) */
 function moreGo() {
   const mb = $('#moreBtn');
-  if (!mb || mb.classList.contains('busy') || S.page !== 'contacts' || S.rows.length >= S.total) return;
+  if (!mb || mb.classList.contains('busy') || S.refresh || S.page !== 'contacts' || S.rows.length >= S.total) return;
   mb.classList.add('busy');
   load(false);
 }
@@ -282,7 +312,7 @@ function moreGo() {
 let fabY = 0;
 function fabWatch(e) {
   const y = window.scrollY, h = document.documentElement.scrollHeight, v = window.innerHeight;
-  if (e && e.type === 'scroll' && y > fabY && y + v >= h - 400) moreGo();
+  if (e && e.type === 'scroll' && y > fabY && y + v >= h * 0.8) moreGo(); // 80 % de la liste parcourue : on charge la suite
   const bas = y + v >= h - 140 && h > v + 40;
   const descend = y > fabY + 6 && y > 120;
   const monte = y < fabY - 6;
@@ -363,36 +393,58 @@ function applyVue(id) {
   $('#q').value = S.f.q || '';
   $('#vTitle').textContent = nom;
   renderSide();
-  load(true);
+  load(true, true);
 }
 function filtersChanged() {
   S.vue = null;
   $('#vTitle').textContent = activeCount(S.f) ? 'Sélection filtrée' : 'Tous les contacts';
   if (!activeCount(S.f)) S.vue = 'tous';
   renderSide();
-  load(true);
+  load(true, true);
 }
 
 /* ---------- chargement ---------- */
-async function load(reset) {
+async function load(reset, useCache) {
   const my = ++S.req;
-  if (reset) { S.offset = 0; S.rows = []; S.sel.clear(); }
-  const p = Object.assign({}, S.f, { limit: PAGE, offset: S.offset });
-  if (reset) $('#list').innerHTML = '<p class="empty">Chargement…</p>';
+  const key = cacheKey(S.f);
+  let vu = null;
+  if (reset) {
+    S.offset = 0; S.rows = []; S.sel.clear();
+    const hit = useCache ? ((cacheGet() || {}).pages || {})[key] : null;
+    if (hit && hit.rows && hit.rows.length) {
+      // la dernière liste connue s'affiche tout de suite
+      vu = JSON.stringify([hit.total, hit.rows]);
+      S.total = hit.total; S.rows = hit.rows.slice(); S.offset = S.rows.length;
+      renderChips(); renderList();
+    } else $('#list').innerHTML = skeleton();
+    S.refresh = my;
+  }
+  const p = Object.assign({}, S.f, { limit: PAGE, offset: reset ? 0 : S.offset });
   try {
     const d = await rpc('crm_liste', { p });
     if (my !== S.req) return;
+    const neuf = d.rows || [];
     S.total = d.total;
-    S.rows = S.rows.concat(d.rows || []);
-    S.offset = S.rows.length;
+    if (reset) {
+      S.refresh = 0;
+      S.rows = neuf; S.offset = neuf.length;
+      if (!S.f.q) cachePut(c => { c.pages = c.pages || {}; c.pages[key] = { total: d.total, rows: neuf, t: Date.now() }; }); // pas de cache pour les recherches tapées
+      renderChips();
+      if (vu !== JSON.stringify([d.total, neuf])) renderList(); // rien ne bouge si la liste n'a pas changé
+      else renderMore();
+    } else {
+      S.rows = S.rows.concat(neuf); S.offset = S.rows.length;
+      renderChips();
+      appendRows(neuf);
+    }
   } catch (e) {
     if (my !== S.req) return;
-    $('#list').innerHTML = `<p class="empty">${esc(errMsg(e))}</p>`;
+    S.refresh = 0;
+    if (reset && S.rows.length) { toast(errMsg(e)); renderMore(); }
+    else if (reset) $('#list').innerHTML = `<p class="empty">${esc(errMsg(e))}</p>`;
+    else { toast(errMsg(e)); renderMore(); }
     if (/JWT|session/i.test(e.message || '')) logout();
-    return;
   }
-  renderChips();
-  renderList();
 }
 
 function renderChips() {
@@ -434,24 +486,44 @@ function renderList() {
   }
   const tw0 = $('.tablewrap', L), keepTop = tw0 ? tw0.scrollTop : 0, keepLeft = tw0 ? tw0.scrollLeft : 0;
   L.innerHTML = mode === 'table' ? tableHtml() : listHtml();
+  L.dataset.mode = mode;
   const tw = $('.tablewrap', L);
-  if (tw) { tw.scrollTop = keepTop; tw.scrollLeft = keepLeft; tw.addEventListener('scroll', () => { if (tw.scrollTop + tw.clientHeight >= tw.scrollHeight - 300) moreGo(); }, { passive: true }); }
-  // interactions
-  $$('[data-id]', L).forEach(el => el.onclick = e => {
-    if (e.target.closest('a,input,[data-pick]')) return;
-    openFiche(+el.dataset.id);
-  });
-  $$('[data-pick]', L).forEach(el => el.onclick = e => { e.stopPropagation(); togglePick(+el.dataset.pick); });
-  $$('input[data-cb]', L).forEach(cb => cb.onchange = () => togglePick(+cb.dataset.cb, cb.checked));
-  const all = $('#cbAll', L);
-  if (all) all.onchange = () => { S.rows.forEach(r => { all.checked ? S.sel.add(r.id) : S.sel.delete(r.id); paintPick(r.id); }); syncAllBox(); renderBulk(); };
+  // tableau : la suite se charge quand on a parcouru 80 % de ce qui est affiché
+  if (tw) { tw.scrollTop = keepTop; tw.scrollLeft = keepLeft; tw.addEventListener('scroll', () => { if (tw.scrollTop + tw.clientHeight >= tw.scrollHeight * 0.8) moreGo(); }, { passive: true }); }
+  // un seul écouteur pour toutes les lignes, y compris celles ajoutées ensuite
+  L.onclick = e => {
+    const pk = e.target.closest('[data-pick]');
+    if (pk) { e.stopPropagation(); togglePick(+pk.dataset.pick); return; }
+    if (e.target.closest('a,input')) return;
+    const el = e.target.closest('[data-id]');
+    if (el) openFiche(+el.dataset.id);
+  };
+  L.onchange = e => {
+    const cb = e.target.closest('input[data-cb]');
+    if (cb) return togglePick(+cb.dataset.cb, cb.checked);
+    if (e.target.id === 'cbAll') { const on = e.target.checked; S.rows.forEach(r => { on ? S.sel.add(r.id) : S.sel.delete(r.id); paintPick(r.id); }); syncAllBox(); renderBulk(); }
+  };
+  renderMore();
+  renderBulk();
+  fabWatch();
+}
+/* page suivante : on ajoute seulement les nouvelles lignes au bas de la liste */
+function appendRows(neuf) {
+  const L = $('#list'), mode = viewMode();
+  const box = L.dataset.mode === mode ? (mode === 'table' ? $('tbody', L) : $('.cards', L)) : null;
+  if (!box) return renderList();
+  box.insertAdjacentHTML('beforeend', neuf.map(mode === 'table' ? rowTr : rowCard).join(''));
+  syncAllBox();
+  renderMore();
+  renderBulk();
+  fabWatch();
+}
+function renderMore() {
   const left = S.total - S.rows.length;
   $('#more').innerHTML = left > 0
     ? `<button class="morebtn" id="moreBtn"><span class="lbl">Afficher ${Math.min(PAGE, left)} de plus</span><span class="sub">${fmtN(S.rows.length)} affichés sur ${fmtN(S.total)}</span><span class="ldots" aria-hidden="true"><i></i><i></i><i></i></span></button>`
     : `<div class="endlist"><span>✓</span>${S.total > 1 ? 'Les ' + fmtN(S.total) + ' contacts sont affichés' : 'Fin de la liste'}</div>`;
   const mb = $('#moreBtn'); if (mb) mb.onclick = moreGo;
-  renderBulk();
-  fabWatch();
 }
 /* cocher un contact : on met à jour seulement la ligne touchée (avant, toute la liste était redessinée à chaque clic) */
 function togglePick(id, on) {
@@ -477,14 +549,15 @@ function syncAllBox() {
   all.indeterminate = n > 0 && n < S.rows.length;
 }
 function listHtml() {
-  return `<div class="cards">${S.rows.map(r => {
+  return `<div class="cards">${S.rows.map(rowCard).join('')}</div>`;
+}
+function rowCard(r) {
     const [b, t] = rowBadge(r); const sel = S.sel.has(r.id);
     return `<div class="row ${sel ? 'sel' : ''}" data-id="${r.id}">
       <button class="av ${sel ? 'sel' : ''}" style="border:0;background:${avColor(r.id)}" data-pick="${r.id}" aria-label="Sélectionner ${esc(fullName(r))}">${sel ? '✓' : esc(initials(r))}</button>
       <div class="txt"><span class="nm">${r.favori ? '<span style="color:#C98A00">★</span> ' : ''}${esc(fullName(r))}</span><span class="sub">${(r.camps || []).length ? `<span class="dots" title="${esc((r.camps || []).map(c => c.n).join(' · '))}">${(r.camps || []).map(c => campDot(c.c)).join('')}</span>` : ''}${esc(subLine(r))}</span></div>
       ${b ? `<span class="chip ${t}">${esc(b)}</span>` : ''}
     </div>`;
-  }).join('')}</div>`;
 }
 function tableHtml() {
   const allSel = S.rows.length && S.rows.every(r => S.sel.has(r.id));
@@ -493,7 +566,9 @@ function tableHtml() {
       <th><label class="sr" for="cbAll">Tout sélectionner</label><input type="checkbox" id="cbAll" ${allSel ? 'checked' : ''}></th>
       ${th('user', 'Nom', 'name')}${th('mail', 'E-mail')}${th('phone', 'Téléphone')}${th('build', 'Entreprise / métier')}
       ${th('pin', 'Ville')}${th('source', 'Origine')}${th('flag', 'Statut')}${th('send', 'Campagnes reçues')}${th('tag', 'Étiquettes')}${th('cal', 'Dernier envoi')}
-    </tr></thead><tbody>${S.rows.map(r => {
+    </tr></thead><tbody>${S.rows.map(rowTr).join('')}</tbody></table></div>`;
+}
+function rowTr(r) {
       const sel = S.sel.has(r.id);
       const tags = (r.tags || []).slice(0, 2).map(x => `<span class="chip" style="${tagStyle(x)}">${esc(x)}</span>`).join('') + ((r.tags || []).length > 2 ? `<span class="chip out">+${r.tags.length - 2}</span>` : '');
       const cps = r.camps || [];
@@ -512,7 +587,6 @@ function tableHtml() {
         <td><div class="tags">${tags || '<span class="mut">—</span>'}</div></td>
         <td class="dim">${esc(fmtD(cps.length ? cps[cps.length - 1].d : r.date_dernier_envoi)) || '—'}</td>
       </tr>`;
-    }).join('')}</tbody></table></div>`;
 }
 
 /* ---------- actions groupées ---------- */
