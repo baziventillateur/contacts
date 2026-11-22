@@ -1,5 +1,5 @@
 /* Contacts — appli de contacts centralisés (Supabase, espace crm du projet Malino) */
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.1.0';
 const SB_URL = 'https://fcfkfuqzgsmckkxqfwuo.supabase.co';
 const SB_KEY = 'sb_publishable_a3SNrQOSCH20T5sKsJxuAA_s7H4yCSR';
 const sb = supabase.createClient(SB_URL, SB_KEY, {
@@ -15,7 +15,7 @@ const wide = () => window.matchMedia('(min-width: 900px)').matches;
 const fmtN = n => (n ?? 0).toLocaleString('fr-FR');
 const fmtD = x => x ? new Date(x).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
 
-const STATUTS = ['À contacter', 'Contacté', 'A répondu', 'Intéressé', 'Pas intéressé', 'E-mail à vérifier', 'Ancien contact Beecook', 'Désinscrit'];
+const STATUTS = ['Client', 'Utilisateur', 'À contacter', 'Contacté', 'A répondu', 'Intéressé', 'Pas intéressé', 'E-mail à vérifier', 'Ancien contact Beecook', 'Désinscrit'];
 const ORIG_LABEL = { 'Beecook (2021-2022)': 'Beecook', 'Prospection PaceApp (Clay)': 'Clay', 'Prospection PaceApp (CV)': 'CV' };
 
 /* ---------- icônes (traits) ---------- */

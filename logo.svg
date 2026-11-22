@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7A6BFF"/><stop offset=".55" stop-color="#5140E6"/><stop offset="1" stop-color="#2E1FA8"/>
+    </linearGradient>
+    <radialGradient id="glow" cx=".28" cy=".18" r=".75">
+      <stop offset="0" stop-color="#fff" stop-opacity=".38"/><stop offset=".55" stop-color="#fff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="card" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#EEF0FF"/></linearGradient>
+    <linearGradient id="av" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#8B7CFF"/><stop offset="1" stop-color="#4A33E0"/></linearGradient>
+    <linearGradient id="at" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#34E0C8"/><stop offset="1" stop-color="#0EA5B7"/></linearGradient>
+    <filter id="sh" x="-30%" y="-30%" width="160%" height="170%"><feDropShadow dx="0" dy="14" stdDeviation="16" flood-color="#160A6B" flood-opacity=".45"/></filter>
+    <filter id="sh2" x="-40%" y="-40%" width="180%" height="180%"><feDropShadow dx="0" dy="8" stdDeviation="9" flood-color="#062B33" flood-opacity=".45"/></filter>
+  </defs>
+  <g id="tile">
+    <rect width="512" height="512" rx="116" fill="url(#bg)"/>
+    <rect width="512" height="512" rx="116" fill="url(#glow)"/>
+    <rect x="3" y="3" width="506" height="506" rx="113" fill="none" stroke="#fff" stroke-opacity=".18" stroke-width="6"/>
+  </g>
+  <g id="art">
+    <!-- cartes empilées -->
+    <rect x="132" y="118" width="250" height="300" rx="40" fill="#fff" fill-opacity=".20" transform="rotate(-12 257 268)"/>
+    <rect x="132" y="112" width="250" height="300" rx="40" fill="#fff" fill-opacity=".38" transform="rotate(-5 257 262)"/>
+    <g filter="url(#sh)">
+      <rect x="131" y="104" width="250" height="300" rx="40" fill="url(#card)"/>
+    </g>
+    <!-- avatar -->
+    <circle cx="256" cy="200" r="58" fill="url(#av)"/>
+    <circle cx="256" cy="184" r="22" fill="#fff"/>
+    <path d="M216 236c6-22 22-32 40-32s34 10 40 32" fill="#fff"/>
+    <ellipse cx="240" cy="168" rx="18" ry="10" fill="#fff" fill-opacity=".22" transform="rotate(-25 240 168)"/>
+    <!-- lignes -->
+    <rect x="186" y="290" width="140" height="18" rx="9" fill="#2E1FA8" fill-opacity=".85"/>
+    <rect x="203" y="324" width="106" height="14" rx="7" fill="#9AA0C8" fill-opacity=".75"/>
+    <rect x="218" y="354" width="76" height="14" rx="7" fill="#C7CBE6"/>
+    <!-- pastille @ -->
+    <g filter="url(#sh2)">
+      <circle cx="364" cy="372" r="62" fill="#fff"/>
+      <circle cx="364" cy="372" r="52" fill="url(#at)"/>
+    </g>
+    <path d="M364 344c-15.5 0-28 12.5-28 28s12.5 28 28 28c5.6 0 10.8-1.6 15.2-4.4" fill="none" stroke="#fff" stroke-width="7.5" stroke-linecap="round"/>
+    <circle cx="364" cy="372" r="10.5" fill="none" stroke="#fff" stroke-width="7.5"/>
+    <path d="M374.5 361v15.5c0 6 4.5 9.5 9 9.5 6.5 0 8.5-6.6 8.5-14 0-15.5-12.5-28-28-28" fill="none" stroke="#fff" stroke-width="7.5" stroke-linecap="round"/>
+    <ellipse cx="346" cy="340" rx="20" ry="9" fill="#fff" fill-opacity=".28" transform="rotate(-30 346 340)"/>
+  </g>
+</svg>
