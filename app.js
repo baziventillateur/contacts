@@ -1,5 +1,5 @@
 /* Contacts — appli de contacts centralisés (Supabase, espace crm du projet Malino) */
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '1.9.0';
 const SB_URL = 'https://fcfkfuqzgsmckkxqfwuo.supabase.co';
 const SB_KEY = 'sb_publishable_a3SNrQOSCH20T5sKsJxuAA_s7H4yCSR';
 const sb = supabase.createClient(SB_URL, SB_KEY, {
@@ -816,7 +816,8 @@ function renderFiche(d, c) {
       </div>
       <div class="card"><h4>Coordonnées et suivi</h4>${formFields(c)}</div>
       ${c.accroche ? `<div class="card"><h4>Accroche utilisée</h4><p class="small" style="margin:0 0 6px;line-height:1.45">${esc(c.accroche)}</p></div>` : ''}
-      <div class="card"><h4>Campagnes reçues <span class="mut" id="envN" style="text-transform:none;letter-spacing:0"></span></h4><div id="envBox"><p class="small mut" style="margin:4px 0 8px">Chargement…</p></div></div>
+      <div class="card"><h4>Campagnes reçues <span class="mut" id="envN" style="text-transform:none;letter-spacing:0"></span></h4><div id="envBox"><p class="small mut" style="margin:4px 0 8px">Chargement…</p></div>
+        <button type="button" class="btn small" id="dCamp" style="margin-top:6px">${ico('plus')}Ajouter à une campagne</button></div>
       ${suivi.length ? `<div class="card"><h4>Historique</h4>${suivi.map(x => `<div class="kv"><span>${esc(x[0])}</span><span>${esc(x[1])}</span></div>`).join('')}</div>` : ''}
       ${vers.length || nSrc ? `<div class="card"><h4>Données d’origine <span class="mut" style="text-transform:none;letter-spacing:0">${nSrc} source${nSrc > 1 ? 's' : ''}</span></h4>
         <button type="button" class="btn link small" id="dOrig" style="padding:0">Développer</button><div id="origBox" class="hidden"></div></div>` : ''}
@@ -829,6 +830,14 @@ function renderFiche(d, c) {
       <button class="btn" type="button" id="dCancel">Fermer</button><button class="btn primary" type="button" id="dSave">Enregistrer</button></div>`;
   const getTags = bindTagEditor(d, { id: c.id, origine: c.origine });
   loadEnvois(d, c);
+  $('#dCamp', d).onclick = async () => {
+    let cc = c;
+    const em = $('[name=email]', d), v = em ? em.value.trim() : '';
+    if (v && v.toLowerCase() !== (c.email || '').toLowerCase()) { // e-mail tapé mais pas encore enregistré : on enregistre d'abord
+      cc = await save(d, Object.assign({ id: c.id }, collect($('#fForm', d), getTags)), true); if (!cc) return;
+    }
+    openAjoutCamp(d, cc);
+  };
   $('#dX', d).onclick = closeDrawer;
   $('#dCancel', d).onclick = closeDrawer;
   $('#fForm', d).onsubmit = e => e.preventDefault();
@@ -861,6 +870,7 @@ async function save(d, p, quick) {
     renderFiche(d, c);
     renderList();
     refreshMeta();
+    return c;
   } catch (e) { if (m) m.textContent = errMsg(e); else toast(errMsg(e)); }
 }
 
@@ -1277,7 +1287,7 @@ async function fnCamp(body) {
 }
 const MOTIFS = { deja: 'l’ont déjà reçue', recent: 'ont reçu un autre mail il y a moins de 7 jours', exclu: 'sont exclus des envois', stop: 'ont répondu STOP',
   sans_email: 'n’ont pas d’e-mail valable', entreprise: 'ne sont pas d’une entreprise prévue pour ce mail', doublon: 'sont en double' };
-async function openEnvoi(slug, idsSel) {
+async function openEnvoi(slug, idsSel, onDone) {
   const nom = campShort(campName(slug));
   const w = dialog(`Envoyer « ${nom} »`, `<div id="eCorps"><div class="mload" style="position:static;padding:30px 0"><span class="ldots"><i></i><i></i><i></i></span></div></div>`);
   let ecart = true, r = null;
@@ -1302,7 +1312,7 @@ async function openEnvoi(slug, idsSel) {
         const x = await fnCamp({ action: 'ajouter', campagne: slug, ids: idsSel, ecart7: ecart, confirme: true });
         closeApercu();
         toast(x.envoyes ? `${x.envoyes} mail${x.envoyes > 1 ? 's' : ''} envoyé${x.envoyes > 1 ? 's' : ''}` : 'Aucun mail envoyé');
-        S.sel.clear(); renderBulk();
+        if (onDone) onDone(x); else { S.sel.clear(); renderBulk(); }
         refreshMeta(); load(true);
       } catch (e) { g.disabled = false; g.textContent = 'Réessayer'; $('#eCancel', w).disabled = false; toast(errMsg(e)); }
     };
@@ -1314,10 +1324,25 @@ async function openEnvoi(slug, idsSel) {
   prep();
 }
 
+/* ajouter un contact à une campagne depuis sa fiche : choix de la campagne, puis le même aperçu et la même confirmation que l'envoi en lot */
+async function openAjoutCamp(d, c) {
+  if (!c.email) return toast('Ajoute d’abord un e-mail à ce contact');
+  const w = dialog('Ajouter à une campagne', '<div id="acCorps"><div class="mload" style="position:static;padding:24px 0"><span class="ldots"><i></i><i></i><i></i></span></div></div>');
+  if (!S.camps) { try { S.camps = await rpc('crm_campagnes_vue'); } catch (e) { $('#acCorps', w).innerHTML = `<p class="empty">${esc(errMsg(e))}</p>`; return; } }
+  if (!$('#mveil')) return;
+  const recues = new Set((d._env || []).map(x => x.campagne));
+  const all = S.camps.campagnes || [];
+  const camps = ENVOYABLES.map(s => all.find(x => x.slug === s) || { slug: s, nom: s });
+  const bloque = c.desinscrit ? 'Cette personne ne veut plus être contactée.' : c.a_exclure ? 'Ce contact est exclu des envois : désactive « Exclu des envois » dans sa fiche pour pouvoir lui écrire.' : '';
+  $('#acCorps', w).innerHTML = (bloque ? `<p class="acwarn">${esc(bloque)}</p>` : `<p class="small mut" style="margin:0 0 6px">Tu verras le mail avant de confirmer. Il part tout de suite à <b>${esc(c.email)}</b>.</p>`)
+    + `<div class="aclist">${camps.map(x => { const deja = recues.has(x.slug); return `<button type="button" class="acrow" data-camp="${esc(x.slug)}" ${deja || bloque ? 'disabled' : ''}>${campDot(x.couleur)}<span class="txt"><b>${esc(String(x.nom).replace(/[«»]/g, '').trim())}</b>${x.description ? `<span class="small mut">${esc(x.description)}</span>` : ''}</span>${deja ? '<span class="chip t-ok">Déjà reçue</span>' : ico('right')}</button>`; }).join('')}</div>`;
+  $$('[data-camp]', w).forEach(b => b.onclick = () => openEnvoi(b.dataset.camp, [c.id], () => loadEnvois(d, c)));
+}
 async function loadEnvois(d, c) {
   const box = $('#envBox', d); if (!box) return;
   let env = [];
   try { env = await rpc('crm_envois_contact', { p_id: c.id }); } catch (e) { box.innerHTML = `<p class="small mut">${esc(errMsg(e))}</p>`; return; }
+  d._env = env || [];
   const mk = (env || []).filter(x => MARKETING.includes(x.type));
   $('#envN', d).textContent = mk.length ? mk.length + ' envoi' + (mk.length > 1 ? 's' : '') : '';
   if (!env.length) { box.innerHTML = '<p class="small mut" style="margin:4px 0 8px">Aucune campagne reçue pour l’instant.</p>'; return; }

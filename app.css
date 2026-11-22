@@ -418,3 +418,14 @@ body .tagify__dropdown .tagify__dropdown__item.tcreate{color:var(--acc);font-wei
 .emseg .hint{font-size:11.5px;color:var(--mut)}
 input.need{border-color:#E8B54A !important;background:#FFFBEF}
 @media (max-width:760px){.emseg{padding:0 12px 8px}.emseg button{padding:4px 7px;font-size:11.5px}}
+
+/* v1.9.0 — ajouter un contact à une campagne depuis sa fiche */
+.aclist{display:flex;flex-direction:column;gap:4px;max-height:52vh;overflow:auto}
+.acrow{display:flex;align-items:center;gap:8px;width:100%;text-align:left;border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:6px 9px;font:inherit;color:inherit;cursor:pointer}
+.acrow:hover:not(:disabled){border-color:var(--acc-line);background:var(--acc-bg)}
+.acrow:disabled{opacity:.55;cursor:default}
+.acrow .txt{flex:1;min-width:0;display:flex;flex-direction:column}
+.acrow b{font-size:13px;font-weight:600}
+.acrow .small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.acrow svg{width:14px;height:14px;flex:none;color:var(--mut2)}
+.acwarn{margin:0 0 8px;padding:6px 9px;border-radius:8px;background:#FFFBEF;border:1px solid #E8B54A;font-size:12.5px}
