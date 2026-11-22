@@ -1,5 +1,5 @@
 /* Contacts — appli de contacts centralisés (Supabase, espace crm du projet Malino) */
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.7.1';
 const SB_URL = 'https://fcfkfuqzgsmckkxqfwuo.supabase.co';
 const SB_KEY = 'sb_publishable_a3SNrQOSCH20T5sKsJxuAA_s7H4yCSR';
 const sb = supabase.createClient(SB_URL, SB_KEY, {
@@ -1249,7 +1249,7 @@ function openTagLot(idsSel) {
 }
 
 /* envoyer une campagne aux contacts cochés (ceux qui ne l'ont pas reçue) : vérification, aperçu, puis confirmation */
-const ENVOYABLES = ['malino-arabe-2311', 'malino-eiffage', 'malino-familles-btp'];
+const ENVOYABLES = ['malino-arabe-2311', 'malino-eiffage', 'malino-familles-btp', 'paceapp-guide-ctx'];
 const sendable = () => S.page === 'contacts' && ENVOYABLES.includes(S.f.campagne_non_recue);
 async function fnCamp(body) {
   const { data: { session } } = await sb.auth.getSession();
