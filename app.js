@@ -1,5 +1,5 @@
 /* Contacts — appli de contacts centralisés (Supabase, espace crm du projet Malino) */
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 const SB_URL = 'https://fcfkfuqzgsmckkxqfwuo.supabase.co';
 const SB_KEY = 'sb_publishable_a3SNrQOSCH20T5sKsJxuAA_s7H4yCSR';
 const sb = supabase.createClient(SB_URL, SB_KEY, {
@@ -1029,6 +1029,7 @@ async function renderCampagnes(force) {
   };
   const sync = K.synchro ? `Historique Resend importé le ${fmtD(K.synchro)}` : '';
   P.innerHTML = `<div class="cwrap">
+    <section class="jcard" id="cJours" aria-label="Envois par jour"></section>
     <div class="kpis">
       <button class="kpi" data-go="all"><b>${fmtN(cov.contacts)}</b><span>contacts joignables</span></button>
       <button class="kpi k0" data-go="0"><b>${fmtN(cov.jamais)}</b><span>jamais contactés</span></button>
@@ -1046,6 +1047,7 @@ async function renderCampagnes(force) {
     <section class="csec"><h3>Campagnes <span class="small mut">${actives.length} envoyée${actives.length > 1 ? 's' : ''} · touche la pastille pour changer la couleur</span></h3>
       <div class="cgrid">${camps.slice().sort((a, b) => ((b.nb + b.programmes) > 0) - ((a.nb + a.programmes) > 0) || String(b.dernier || '').localeCompare(String(a.dernier || ''))).map(card).join('')}</div></section>
   </div>`;
+  drawJours($('#cJours', P), K);
   $$('[data-go]', P).forEach(b => b.onclick = () => { const g = b.dataset.go; goContacts(g === 'all' ? { joignables: true } : { nb_campagnes: g, joignables: true }); });
   $$('[data-camp]', P).forEach(b => b.onclick = () => openCampagne(b.dataset.camp));
   $$('[data-recue]', P).forEach(b => b.onclick = () => goContacts({ campagne_recue: b.dataset.recue }));
@@ -1056,6 +1058,101 @@ async function renderCampagnes(force) {
     try { await rpc('crm_campagne_enregistrer', { p_slug: inp.dataset.color, p_nom: null, p_couleur: inp.value }); toast('Couleur enregistrée'); renderCampagnes(true); }
     catch (e) { toast(errMsg(e)); }
   });
+}
+/* ---------- envois par jour : histogramme empilé par campagne + calendrier façon GitHub ---------- */
+const JPLAGES = [14, 30, 90];
+function drawJours(box, K) {
+  if (!box) return;
+  const auj = K.aujourdhui || new Date().toISOString().slice(0, 10);
+  const DAY = 864e5, t0 = Date.parse(auj + 'T00:00:00Z');
+  const iso = t => new Date(t).toISOString().slice(0, 10);
+  const camps = {}; (K.campagnes || []).forEach(c => camps[c.slug] = c);
+  // jour → { n, p, r, par campagne }
+  const J = {};
+  (K.jours || []).forEach(x => {
+    const j = J[x.d] = J[x.d] || { n: 0, p: 0, r: 0, c: {} };
+    j.n += x.n; j.p += x.p; j.r += x.r;
+    j.c[x.c] = (j.c[x.c] || 0) + x.n + x.p;
+  });
+  const get = d => J[d] || { n: 0, p: 0, r: 0, c: {} };
+  const somme = k => { let t = 0; for (let i = 0; i < k; i++) t += get(iso(t0 - i * DAY)).n; return t; };
+  let plage = 30; try { plage = +localStorage.getItem('cx-jours') || 30; } catch (e) { }
+  if (!JPLAGES.includes(plage)) plage = 30;
+  let sel = auj;
+  // jours à venir avec des envois programmés (2 semaines max)
+  let fin = t0; Object.keys(J).forEach(d => { const t = Date.parse(d + 'T00:00:00Z'); if (t > fin && J[d].p) fin = Math.min(t, t0 + 14 * DAY); });
+  const nomJour = d => { const t = new Date(Date.parse(d + 'T12:00:00Z')).toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' }); return t.charAt(0).toUpperCase() + t.slice(1); };
+  const court = d => d.slice(8, 10) + '/' + d.slice(5, 7);
+  const couleur = slug => (camps[slug] && camps[slug].couleur) || '#94A0B8';
+  const auj0 = get(auj).n, hier = get(iso(t0 - DAY)).n;
+  const ecart = auj0 - hier;
+  const draw = () => {
+    const jours = []; for (let t = t0 - (plage - 1) * DAY; t <= fin; t += DAY) jours.push(iso(t));
+    const mx = Math.max(1, ...jours.map(d => get(d).n + get(d).p));
+    const graduation = (() => { const p = Math.pow(10, Math.floor(Math.log10(mx))); const m = [1, 2, 2.5, 5, 10].find(k => k * p >= mx); return m * p; })();
+    const pas = plage <= 14 ? 2 : plage <= 30 ? 7 : 14;
+    const col = d => {
+      const j = get(d), tot = j.n + j.p;
+      const seg = Object.entries(j.c).sort((a, b) => b[1] - a[1]).map(([c, v]) => `<i style="height:${v / tot * 100}%;background:${esc(couleur(c))}"></i>`).join('');
+      const we = [0, 6].includes(new Date(Date.parse(d + 'T12:00:00Z')).getUTCDay());
+      return `<div class="jc ${we ? 'we' : ''} ${d === auj ? 'auj' : ''} ${d > auj ? 'fut' : ''} ${d === sel ? 'sel' : ''}" data-d="${d}">
+        <div class="jb ${j.p && !j.n ? 'prog' : ''}" style="height:${tot ? Math.max(3, tot / graduation * 100) : 0}%">${seg}</div>
+        ${d === sel && tot ? `<span class="jv">${fmtN(tot)}</span>` : ''}</div>`;
+    };
+    const labels = jours.map((d, i) => (d === auj || (i % pas === 0 && Math.abs(Date.parse(d) - t0) > DAY * (pas / 2))) ? `<span style="left:${(i + .5) / jours.length * 100}%" class="${d === auj ? 'auj' : ''}">${d === auj ? 'Auj.' : court(d)}</span>` : '').join('');
+    const j = get(sel);
+    const det = Object.entries(j.c).sort((a, b) => b[1] - a[1]);
+    // calendrier 26 semaines (lundi → dimanche), comme le graphique des contributions GitHub
+    const lun = t0 - ((new Date(t0).getUTCDay() + 6) % 7) * DAY;
+    const debut = lun - 25 * 7 * DAY;
+    let maxH = 1; for (let t = debut; t <= t0; t += DAY) maxH = Math.max(maxH, get(iso(t)).n);
+    const niv = n => n ? Math.min(4, Math.max(1, Math.ceil(4 * Math.sqrt(n / maxH)))) : 0;
+    let cal = '', mois = '', total6 = 0, actifs = 0;
+    for (let w = 0; w < 26; w++) {
+      const tw = debut + w * 7 * DAY, dw = new Date(tw);
+      if (dw.getUTCDate() <= 7) mois += `<span style="grid-column:${w + 1}">${dw.toLocaleDateString('fr-FR', { month: 'short', timeZone: 'UTC' }).replace('.', '')}</span>`;
+      cal += '<div class="hw">' + [0, 1, 2, 3, 4, 5, 6].map(k => {
+        const t = tw + k * DAY; if (t > t0) return '<i class="vide"></i>';
+        const d = iso(t), n = get(d).n; total6 += n; if (n) actifs++;
+        return `<i class="h${niv(n)} ${d === sel ? 'sel' : ''}" data-d="${d}" title="${esc(nomJour(d))} : ${n} mail${n > 1 ? 's' : ''}"></i>`;
+      }).join('') + '</div>';
+    }
+    box.innerHTML = `
+      <div class="jhd"><h3>Envois par jour</h3>
+        <div class="seg" role="tablist">${JPLAGES.map(k => `<button class="${k === plage ? 'on' : ''}" data-pl="${k}" role="tab" aria-selected="${k === plage}">${k} j</button>`).join('')}</div></div>
+      <div class="jkpi">
+        <div class="big"><b>${fmtN(auj0)}</b><span>mail${auj0 > 1 ? 's' : ''} aujourd’hui</span>${hier || auj0 ? `<em class="${ecart > 0 ? 'up' : ecart < 0 ? 'down' : ''}">${ecart > 0 ? '▲ +' + fmtN(ecart) : ecart < 0 ? '▼ ' + fmtN(ecart) : '='} vs hier</em>` : ''}</div>
+        <div><b>${fmtN(hier)}</b><span>hier</span></div>
+        <div><b>${fmtN(somme(7))}</b><span>7 jours</span></div>
+        <div><b>${fmtN(somme(30))}</b><span>30 jours</span></div>
+      </div>
+      <div class="jgraph" style="--n:${jours.length}">
+        <div class="jaxe"><span style="top:0">${fmtN(graduation)}</span><span style="top:50%">${fmtN(graduation / 2)}</span><span style="top:100%">0</span></div>
+        <div class="jbars">${jours.map(col).join('')}</div>
+        <div class="jx">${labels}</div>
+      </div>
+      <div class="jdet"><div class="jsum"><b>${esc(nomJour(sel))}</b> · ${fmtN(j.n)} mail${j.n > 1 ? 's' : ''}${j.p ? ` · <span class="pur">${fmtN(j.p)} programmé${j.p > 1 ? 's' : ''}</span>` : ''}${j.r ? ` · <span class="bad">${fmtN(j.r)} rebond${j.r > 1 ? 's' : ''}</span>` : ''}</div>
+        ${det.length ? `<div class="jchips">${det.map(([c, v]) => `<button data-camp="${esc(c)}">${campDot(couleur(c))}${esc(campShort((camps[c] || {}).nom || c))}<b>${fmtN(v)}</b></button>`).join('')}</div>` : '<div class="small mut">Aucun envoi ce jour-là.</div>'}</div>
+      <div class="heat">
+        <div class="hmois">${mois}</div>
+        <div class="hgrid">${cal}</div>
+        <div class="hleg small mut"><span>${fmtN(total6)} mails sur 6 mois · ${actifs} jour${actifs > 1 ? 's' : ''} d’envoi</span><span class="hl">Moins <i class="h0"></i><i class="h1"></i><i class="h2"></i><i class="h3"></i><i class="h4"></i> Plus</span></div>
+      </div>`;
+    $$('[data-pl]', box).forEach(b => b.onclick = () => { plage = +b.dataset.pl; try { localStorage.setItem('cx-jours', plage); } catch (e) { } draw(); });
+    $$('.jchips [data-camp]', box).forEach(b => b.onclick = () => openCampagne(b.dataset.camp));
+    $$('.hgrid [data-d]', box).forEach(c => c.onclick = () => { sel = c.dataset.d; if (Date.parse(sel) < t0 - (plage - 1) * DAY) plage = 90; draw(); });
+    // barres : on suit le doigt / la souris pour lire chaque jour, même quand les barres sont fines
+    const bars = $('.jbars', box);
+    const pick = e => {
+      const r = bars.getBoundingClientRect(); const x = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+      const i = Math.max(0, Math.min(jours.length - 1, Math.floor(x / r.width * jours.length)));
+      if (jours[i] !== sel) { sel = jours[i]; draw(); }
+    };
+    bars.onclick = pick;
+    bars.onpointermove = e => { if (e.pointerType === 'mouse') pick(e); };
+    bars.addEventListener('touchmove', e => { pick(e); }, { passive: true });
+  };
+  draw();
 }
 async function openCampagne(slug) {
   const d = drawer(`<div class="dhead"><button class="icon bare" id="dX" aria-label="Fermer">${ico('back')}</button><h2>Chargement…</h2></div><div class="dbody"></div>`);
