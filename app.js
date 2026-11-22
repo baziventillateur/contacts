@@ -1,5 +1,5 @@
 /* Contacts — appli de contacts centralisés (Supabase, espace crm du projet Malino) */
-const APP_VERSION = '1.7.1';
+const APP_VERSION = '1.8.0';
 const SB_URL = 'https://fcfkfuqzgsmckkxqfwuo.supabase.co';
 const SB_KEY = 'sb_publishable_a3SNrQOSCH20T5sKsJxuAA_s7H4yCSR';
 const sb = supabase.createClient(SB_URL, SB_KEY, {
@@ -53,15 +53,17 @@ const ico = (k, cls = '') => `<svg viewBox="0 0 24 24" aria-hidden="true" class=
 
 /* ---------- état ---------- */
 const VUES_BASE = [
-  { id: 'tous', nom: 'Tous les contacts', icon: 'users', f: {} },
+  { id: 'tous', nom: 'Contacts avec e-mail', icon: 'mail', f: {} },
+  { id: 'sans_email', nom: 'Sans e-mail · à compléter', icon: 'alert', f: { email: 'sans' } },
+  { id: 'tout', nom: 'Tous les contacts', icon: 'users', f: { email: 'tous' } },
   { id: 'joignables', nom: 'Joignables par e-mail', icon: 'mail', f: { joignables: true } },
-  { id: 'favoris', nom: 'Favoris', icon: 'star', f: { favoris: true } },
+  { id: 'favoris', nom: 'Favoris', icon: 'star', f: { favoris: true, email: 'tous' } },
   { id: 'prospection', nom: 'Prospection PaceApp', icon: 'flag', f: { origines: ['Prospection PaceApp (Clay)', 'Prospection PaceApp (CV)'] } },
   { id: 'chefs', nom: 'Chefs Beecook joignables', icon: 'user', f: { origines: ['Beecook (2021-2022)'], profils: ['chef'], joignables: true } },
   { id: 'a_contacter', nom: 'À contacter', icon: 'cal', f: { statuts: ['À contacter'] } },
-  { id: 'exclus', nom: 'Exclus des envois', icon: 'ban', f: { exclus: true } }
+  { id: 'exclus', nom: 'Exclus des envois', icon: 'ban', f: { exclus: true, email: 'tous' } }
 ];
-const emptyF = () => ({ q: '', origines: [], statuts: [], profils: [], secteurs: [], tags: [], zone: '', campagne_recue: '', campagne_non_recue: '', nb_campagnes: '', joignables: false, avec_tel: false, accord: false, favoris: false, exclus: false, tri: 'recent' });
+const emptyF = () => ({ q: '', origines: [], statuts: [], profils: [], secteurs: [], tags: [], zone: '', campagne_recue: '', campagne_non_recue: '', nb_campagnes: '', email: 'avec', joignables: false, avec_tel: false, accord: false, favoris: false, exclus: false, tri: 'recent' });
 const S = {
   user: null, stats: null, vues: [], favs: [], rows: [], total: 0, offset: 0, req: 0, page: 'contacts', camps: null,
   f: emptyF(), vue: 'tous', sel: new Set(),
@@ -86,7 +88,7 @@ function subLine(r) {
   const job = [r.metier, r.entreprise].filter(Boolean).join(' · ');
   if (job) return job + (r.ville ? ' · ' + r.ville : '');
   const prof = (r.profils_beecook || []).map(p => p[0].toUpperCase() + p.slice(1)).join(', ');
-  return [prof, r.ville].filter(Boolean).join(' · ') || r.email || '';
+  return [prof, r.ville].filter(Boolean).join(' · ') || r.email || r.telephone || '';
 }
 function statutTone(s) {
   if (!s) return 't-gray';
@@ -267,6 +269,7 @@ function shell() {
         <label class="sr" for="tri">Tri</label>
         <select class="sel" id="tri"><option value="recent">Récents</option><option value="nom">Nom A→Z</option><option value="ajout">Derniers ajoutés</option></select>
       </div>
+      <div class="emseg" id="emSeg"></div>
       <div class="achips" id="achips"></div>
       <div class="bulk hidden" id="bulk"></div>
       <section id="list" aria-live="polite"></section>
@@ -333,7 +336,9 @@ function toggleSide(open) {
 /* ---------- barre latérale façon Twenty : vues + favoris ---------- */
 function vueCount(v) {
   const st = S.stats; if (!st) return '';
-  if (v.id === 'tous') return fmtN(st.total);
+  if (v.id === 'tous') return fmtN(st.avec_email ?? st.total);
+  if (v.id === 'sans_email') return st.sans_email != null ? fmtN(st.sans_email) : '';
+  if (v.id === 'tout') return fmtN(st.total);
   if (v.id === 'joignables') return fmtN(st.joignables);
   if (v.id === 'favoris') return fmtN(st.favoris);
   if (v.id === 'exclus') return fmtN(st.exclus);
@@ -398,8 +403,8 @@ function applyVue(id) {
 }
 function filtersChanged() {
   S.vue = null;
-  $('#vTitle').textContent = activeCount(S.f) ? 'Sélection filtrée' : 'Tous les contacts';
-  if (!activeCount(S.f)) S.vue = 'tous';
+  if (!activeCount(S.f)) S.vue = { avec: 'tous', sans: 'sans_email', tous: 'tout' }[S.f.email] || 'tous';
+  $('#vTitle').textContent = S.vue ? (VUES_BASE.find(v => v.id === S.vue) || {}).nom : 'Sélection filtrée';
   renderSide();
   load(true, true);
 }
@@ -415,7 +420,7 @@ async function load(reset, useCache) {
     if (hit && hit.rows && hit.rows.length) {
       // la dernière liste connue s'affiche tout de suite
       vu = JSON.stringify([hit.total, hit.rows]);
-      S.total = hit.total; S.rows = hit.rows.slice(); S.offset = S.rows.length;
+      S.total = hit.total; S.autres = hit.autres ?? null; S.rows = hit.rows.slice(); S.offset = S.rows.length;
       renderChips(); renderList();
     } else $('#list').innerHTML = skeleton();
     S.refresh = my;
@@ -425,11 +430,11 @@ async function load(reset, useCache) {
     const d = await rpc('crm_liste', { p });
     if (my !== S.req) return;
     const neuf = d.rows || [];
-    S.total = d.total;
+    S.total = d.total; S.autres = d.autres ?? null;
     if (reset) {
       S.refresh = 0;
       S.rows = neuf; S.offset = neuf.length;
-      if (!S.f.q) cachePut(c => { c.pages = c.pages || {}; c.pages[key] = { total: d.total, rows: neuf, t: Date.now() }; }); // pas de cache pour les recherches tapées
+      if (!S.f.q) cachePut(c => { c.pages = c.pages || {}; c.pages[key] = { total: d.total, autres: d.autres, rows: neuf, t: Date.now() }; }); // pas de cache pour les recherches tapées
       renderChips();
       if (vu !== JSON.stringify([d.total, neuf])) renderList(); // rien ne bouge si la liste n'a pas changé
       else renderMore();
@@ -448,8 +453,18 @@ async function load(reset, useCache) {
   }
 }
 
+function renderEmSeg() {
+  const el = $('#emSeg'); if (!el) return;
+  const m = S.f.email || 'avec', a = S.autres;
+  const n = { avec: m === 'avec' ? S.total : m === 'sans' ? a : null, sans: m === 'sans' ? S.total : m === 'avec' ? a : null, tous: m === 'tous' ? S.total : null };
+  const b = (k, lab) => `<button type="button" data-em="${k}" class="${m === k ? 'on' : ''}" aria-pressed="${m === k}">${lab}${n[k] != null ? ` <b>${fmtN(n[k])}</b>` : ''}</button>`;
+  el.innerHTML = `<div class="eg" role="group" aria-label="Contacts selon l’e-mail">${b('avec', 'Avec e-mail')}${b('sans', 'Sans e-mail')}${b('tous', 'Tous')}</div>`
+    + (m === 'sans' && S.total ? '<span class="hint">Ouvre un contact pour ajouter son e-mail</span>' : '');
+  $$('[data-em]', el).forEach(x => x.onclick = () => { if (S.f.email === x.dataset.em) return; S.f.email = x.dataset.em; filtersChanged(); });
+}
 function renderChips() {
   $('#vCount').textContent = fmtN(S.total) + (S.total > 1 ? ' contacts' : ' contact');
+  renderEmSeg();
   $('#filtN').textContent = activeCount(S.f) || '';
   $('#tri').value = S.f.tri;
   const c = [];
@@ -745,7 +760,7 @@ function formFields(c) {
   return `<div class="fgrid">
     <label class="f">Prénom<input name="prenom" value="${v('prenom')}" autocomplete="off"></label>
     <label class="f">Nom<input name="nom" value="${v('nom')}" autocomplete="off"></label>
-    <label class="f full">E-mail<input name="email" type="email" value="${v('email')}" autocomplete="off"></label>
+    <label class="f full">E-mail<input name="email" type="email" value="${v('email')}" autocomplete="off"${v('email') ? '' : ' class="need" placeholder="À compléter"'}></label>
     <label class="f">Téléphone<input name="telephone" type="tel" value="${v('telephone')}" autocomplete="off"></label>
     <label class="f">Ville<input name="ville" value="${v('ville')}" autocomplete="off"></label>
     <label class="f">Entreprise<input name="entreprise" value="${v('entreprise')}" autocomplete="off"></label>
