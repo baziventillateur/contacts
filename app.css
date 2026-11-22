@@ -195,3 +195,97 @@ table.grid{border-collapse:separate;border-spacing:0;width:max-content;min-width
   .tablewrap{max-height:none}
   .drawer{width:100vw}
 }
+
+/* ---------- campagnes (v1.1) ---------- */
+.cdot{display:inline-block;width:9px;height:9px;border-radius:5px;flex:none;vertical-align:middle}
+.cdot.big{width:14px;height:14px;border-radius:7px}
+.dots{display:inline-flex;gap:3px;margin-right:6px;vertical-align:middle}
+.dots .cdot{width:7px;height:7px}
+.cchip{display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 8px 0 6px;border-radius:11px;border:1px solid var(--line);background:var(--panel);font-size:11.5px;font-weight:500;white-space:nowrap;max-width:170px;overflow:hidden;text-overflow:ellipsis}
+.cchip.cprog{border-style:dashed}
+.btn.small{height:26px;padding:0 8px;font-size:12px}
+.cwrap{padding:0 12px 90px;display:flex;flex-direction:column;gap:10px;max-width:1180px}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
+.kpi{border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:8px 10px;text-align:left;display:flex;flex-direction:column;gap:1px}
+.kpi b{font-size:19px;line-height:1.2}
+.kpi span{font-size:11.5px;color:var(--mut)}
+.kpi:hover{border-color:var(--acc-line)}
+.kpi.k0 b{color:#475569}.kpi.k1 b{color:#0F6B5C}.kpi.k2 b{color:#9A4A00}
+.covbar{display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--line2)}
+.covbar i,.leg i{display:block}
+.c0{background:#CBD2E0}.c1{background:#34A389}.c2{background:#E8913A}
+.leg{display:flex;gap:12px;flex-wrap:wrap;align-items:center}
+.leg span{display:inline-flex;align-items:center;gap:5px}
+.leg i{width:9px;height:9px;border-radius:5px}
+.leg i.bubl{background:#8B5CF6}.leg i.bubl.bprog{background:transparent;border:1.5px dashed #8B5CF6}
+.csec{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px 12px 10px}
+.csec h3{margin:2px 0 8px;font-size:13.5px;font-weight:700;display:flex;gap:8px;align-items:baseline;flex-wrap:wrap}
+.fwrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin:0 -4px;padding:0 4px 4px}
+.frise{display:grid;grid-template-columns:minmax(130px,190px) repeat(var(--n),52px);align-items:center;width:max-content;min-width:100%}
+.fh{font-size:11px;color:var(--mut);text-align:center;padding:2px 0 6px;border-bottom:1px solid var(--line2);line-height:1.15}
+.fh span{display:block;font-size:10px;color:var(--mut2)}
+.fh.lab{text-align:left}
+.fh.now,.fc.now{background:#F4F7FE}
+.fl{display:flex;align-items:center;gap:6px;height:40px;border:0;background:transparent;text-align:left;font-size:12px;font-weight:600;min-width:0;padding:0 6px 0 0;border-bottom:1px solid var(--line2)}
+.fl span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.fc{height:40px;display:flex;align-items:center;justify-content:center;border-bottom:1px solid var(--line2)}
+.bub{border:0;border-radius:50%;background:var(--c);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.15);padding:0}
+.bub.bprog{background:#fff;color:var(--c);border:2px dashed var(--c);box-shadow:none;border-radius:50%}
+.alert{border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:3px;margin-bottom:6px;font-size:12.5px}
+.alert.ok{background:var(--ok-bg);color:var(--ok)}
+.alert.warn{background:#FFF6EA;border:1px solid #F6DDBB}
+.alert.bad{background:var(--bad-bg);border:1px solid #F1CACA}
+.aitem{display:flex;justify-content:space-between;gap:10px;border:0;background:transparent;padding:4px 0;border-top:1px solid rgba(0,0,0,.05);font-size:12px;text-align:left;width:100%}
+.aitem span{color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px}
+.ccard{border:1px solid var(--line);border-left:4px solid var(--c);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:6px;background:var(--panel)}
+.ccard.vide{opacity:.6}
+.chd{display:flex;align-items:center;gap:7px;min-width:0}
+.chd .chip{margin-left:auto;flex:none}
+.cname{border:0;background:transparent;padding:0;font-weight:700;font-size:13px;text-align:left;min-width:0;display:flex;flex-direction:column;line-height:1.25}
+.cmeta{font-size:11px;font-weight:500;color:var(--mut)}
+.cpick{position:relative;display:inline-flex;cursor:pointer}
+.cpick input{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;border:0;padding:0}
+.cnums{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
+.cnums div{display:flex;flex-direction:column;align-items:flex-start}
+.cnums b{font-size:15px}
+.cnums span{font-size:10.5px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.cnums div{min-width:0}
+.cnums .p b{color:#6D28D9}.cnums .r b{color:var(--bad)}
+.cnums.box{border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.cfoot{display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap}
+.cbtns{display:flex;gap:4px}
+.erow{display:flex;align-items:center;gap:8px;width:100%;border:0;background:transparent;padding:5px 0;border-bottom:1px solid var(--line2);text-align:left}
+.erow .av{width:26px;height:26px;font-size:10px}
+.erow .txt{flex:1;min-width:0;display:flex;flex-direction:column}
+.erow .nm{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.erow .sub{font-size:11.5px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tline{display:flex;flex-direction:column;margin:2px 0 6px}
+.ti{display:flex;gap:8px;align-items:flex-start;padding:5px 0;border-bottom:1px solid var(--line2);font-size:12.5px}
+.ti:last-child{border-bottom:0}
+.ti .cdot{margin-top:4px}
+.ti div{display:flex;flex-direction:column}
+.ti.auto{opacity:.6}
+@media (max-width:899px){
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .cwrap{padding:0 10px 90px}
+  .frise{grid-template-columns:minmax(110px,140px) repeat(var(--n),46px)}
+}
+
+/* bulles flottantes qui s'effacent + bouton « afficher plus » (v1.3) */
+.fab,.fab2{transition:transform .28s cubic-bezier(.34,1.56,.64,1),opacity .2s ease}
+body.fab-off .fab,body.fab-off .fab2{transform:translateY(30px) scale(.4);opacity:0;pointer-events:none;transition:transform .22s ease-in,opacity .18s ease-in}
+.more{padding:12px 12px 96px}
+.morebtn{width:100%;max-width:440px;min-height:52px;border-radius:14px;border:1.5px solid var(--acc-line);background:var(--panel);color:var(--acc);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;position:relative;box-shadow:0 2px 8px rgba(31,79,191,.08);transition:transform .15s,box-shadow .15s}
+.morebtn:active{transform:scale(.98)}
+.morebtn .lbl{font-size:14.5px;font-weight:700}
+.morebtn .sub{font-size:11.5px;color:var(--mut)}
+.morebtn .ldots{display:none;gap:5px}
+.morebtn .ldots i{width:8px;height:8px;border-radius:4px;background:var(--acc);animation:ldot 1s infinite ease-in-out}
+.morebtn .ldots i:nth-child(2){animation-delay:.15s}.morebtn .ldots i:nth-child(3){animation-delay:.3s}
+.morebtn.busy .lbl,.morebtn.busy .sub{display:none}
+.morebtn.busy .ldots{display:flex}
+@keyframes ldot{0%,80%,100%{transform:scale(.5);opacity:.4}40%{transform:scale(1);opacity:1}}
+.endlist{display:flex;align-items:center;gap:8px;color:var(--mut);font-size:12.5px;padding:8px 0;animation:fadeup .4s ease}
+.endlist span{width:22px;height:22px;border-radius:11px;background:var(--ok-bg);color:var(--ok);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px}
+@keyframes fadeup{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}

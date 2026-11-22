@@ -1,4 +1,4 @@
-/* Contacts · compléments v1.2.0
+/* Contacts · compléments v1.2.0 (compatible 1.3.0)
    Badges (Malino, PaceApp, Pro, Particulier), installation de l'appli, cloche de notifications et notifications push
    (même principe que CovoitGo), ajout de contacts par photo (lecture des e-mails dans le navigateur) et import Google Contacts. */
 (() => {

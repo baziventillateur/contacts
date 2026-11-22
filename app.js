@@ -1,5 +1,5 @@
 /* Contacts — appli de contacts centralisés (Supabase, espace crm du projet Malino) */
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 const SB_URL = 'https://fcfkfuqzgsmckkxqfwuo.supabase.co';
 const SB_KEY = 'sb_publishable_a3SNrQOSCH20T5sKsJxuAA_s7H4yCSR';
 const sb = supabase.createClient(SB_URL, SB_KEY, {
@@ -44,7 +44,10 @@ const I = {
   menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
   eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   ban: '<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>',
-  out: '<path d="M15 4h4v16h-4M10 17l5-5-5-5M15 12H4"/>'
+  out: '<path d="M15 4h4v16h-4M10 17l5-5-5-5M15 12H4"/>',
+  send: '<path d="M21 3L10 14M21 3l-7 18-4-7-7-4z"/>',
+  refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 5v6h-6"/>',
+  alert: '<path d="M12 3l10 18H2z"/><path d="M12 10v5M12 18v.5"/>'
 };
 const ico = (k, cls = '') => `<svg viewBox="0 0 24 24" aria-hidden="true" class="${cls}">${I[k]}</svg>`;
 
@@ -58,9 +61,9 @@ const VUES_BASE = [
   { id: 'a_contacter', nom: 'À contacter', icon: 'cal', f: { statuts: ['À contacter'] } },
   { id: 'exclus', nom: 'Exclus des envois', icon: 'ban', f: { exclus: true } }
 ];
-const emptyF = () => ({ q: '', origines: [], statuts: [], profils: [], secteurs: [], tags: [], zone: '', joignables: false, avec_tel: false, accord: false, favoris: false, exclus: false, tri: 'recent' });
+const emptyF = () => ({ q: '', origines: [], statuts: [], profils: [], secteurs: [], tags: [], zone: '', campagne_recue: '', campagne_non_recue: '', nb_campagnes: '', joignables: false, avec_tel: false, accord: false, favoris: false, exclus: false, tri: 'recent' });
 const S = {
-  user: null, stats: null, vues: [], favs: [], rows: [], total: 0, offset: 0, req: 0,
+  user: null, stats: null, vues: [], favs: [], rows: [], total: 0, offset: 0, req: 0, page: 'contacts', camps: null,
   f: emptyF(), vue: 'tous', sel: new Set(),
   mode: localStorage.getItem('contacts-mode') || 'auto'
 };
@@ -127,7 +130,14 @@ async function rpc(name, args) {
   return data;
 }
 const activeCount = f => ['origines', 'statuts', 'profils', 'secteurs', 'tags'].reduce((n, k) => n + f[k].length, 0)
-  + (f.zone ? 1 : 0) + ['joignables', 'avec_tel', 'accord', 'favoris', 'exclus'].filter(k => f[k]).length;
+  + (f.zone ? 1 : 0) + ['campagne_recue', 'campagne_non_recue', 'nb_campagnes'].filter(k => f[k]).length
+  + ['joignables', 'avec_tel', 'accord', 'favoris', 'exclus'].filter(k => f[k]).length;
+/* étiquettes coloriées : une couleur stable par étiquette */
+const TAGC = [['#E2EAFB', '#1F4FBF'], ['#DDF3EE', '#0F6B5C'], ['#FDEBD8', '#9A4A00'], ['#EFE4FB', '#5B2E91'], ['#FBE3E3', '#A12D2D'], ['#E6F4FA', '#0B6A8C'], ['#FFF4CC', '#7A5A00'], ['#E9F5E1', '#3C6E1E'], ['#FCE7F3', '#9D2463'], ['#ECEEF1', '#4A505C']];
+function tagStyle(t) { let h = 0; for (const ch of String(t || '').toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0; const c = TAGC[h % TAGC.length]; return `background:${c[0]};color:${c[1]}`; }
+const campName = s => ((S.camps?.campagnes || []).find(c => c.slug === s) || {}).nom || s;
+const campShort = n => String(n || '').replace(/^(PaceApp|Malino) · /, '').replace(/[«»]/g, '').trim();
+const campDot = (c, big) => `<i class="cdot${big ? ' big' : ''}" style="background:${esc(c || '#94A0B8')}"></i>`;
 
 /* ---------- connexion (même code e-mail que l'admin Malino) ---------- */
 let loginEmail = '';
@@ -195,6 +205,7 @@ async function refreshMeta() {
     rpc('crm_stats'), rpc('crm_vues'), rpc('crm_liste', { p: { favoris: true, limit: 6, tri: 'nom' } })
   ]);
   S.stats = stats; S.vues = vues || []; S.favs = favs.rows || [];
+  try { S.camps = await rpc('crm_campagnes_vue'); } catch (e) { S.camps = S.camps || null; }
   if ($('#side')) renderSide();
 }
 
@@ -206,14 +217,18 @@ function shell() {
       <header class="top">
         <button class="icon only-m" id="menuBtn" aria-label="Ouvrir le menu">${ico('menu')}</button>
         <div class="ttl"><h1 id="vTitle">Contacts</h1><span id="vCount" class="mut small"></span></div>
-        <div class="top-actions">
+        <div class="top-actions" id="topC">
           <div class="seg only-d" role="group" aria-label="Affichage">
             <button data-mode="table">${ico('table')}Tableau</button><button data-mode="liste">${ico('list')}Liste</button>
           </div>
           <button class="btn" id="expBtn" aria-label="Exporter en CSV">${ico('down')}<span class="only-d">Exporter</span></button>
           <button class="btn primary only-d" id="newBtn">${ico('plus')}Nouveau</button>
         </div>
+        <div class="top-actions hidden" id="topK">
+          <button class="btn" id="kRefresh">${ico('refresh')}<span class="only-d">Actualiser</span></button>
+        </div>
       </header>
+      <div id="pContacts">
       <div class="toolbar">
         <label class="search">${ico('search')}<span class="sr">Rechercher</span>
           <input id="q" type="search" placeholder="Nom, e-mail, entreprise, ville, note…" autocomplete="off"></label>
@@ -225,19 +240,22 @@ function shell() {
       <div class="bulk hidden" id="bulk"></div>
       <section id="list" aria-live="polite"></section>
       <div class="more" id="more"></div>
+      </div>
+      <div id="pCamp" class="hidden"></div>
     </main>
   </div>
   <button class="fab only-m" id="fab" aria-label="Ajouter un contact">${ico('plus')}</button>
   <nav class="bnav only-m" aria-label="Navigation">
     <button class="on" id="nContacts">${ico('users')}Contacts</button>
+    <button id="nCamp">${ico('send')}Campagnes</button>
     <button id="nVues">${ico('list')}Vues</button>
-    <button id="nExport">${ico('down')}Exporter</button>
   </nav>`;
   renderSide();
   $('#menuBtn').onclick = () => toggleSide(true);
   $('#nVues').onclick = () => toggleSide(true);
-  $('#nContacts').onclick = () => { applyVue('tous'); window.scrollTo(0, 0); };
-  $('#nExport').onclick = exportCsv;
+  $('#nContacts').onclick = () => { showPage('contacts'); applyVue('tous'); window.scrollTo(0, 0); };
+  $('#nCamp').onclick = () => showPage('campagnes');
+  $('#kRefresh').onclick = () => renderCampagnes(true);
   $('#expBtn').onclick = exportCsv;
   $('#newBtn').onclick = () => openForm(null);
   $('#fab').onclick = () => openForm(null);
@@ -251,6 +269,18 @@ function shell() {
     if (e.key === 'Escape') { closeDrawer(); toggleSide(false); }
   });
   let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(renderList, 150); });
+  window.addEventListener('scroll', fabWatch, { passive: true });
+}
+/* bulles flottantes (+, photo) : elles s'effacent en bas de la liste ou quand on descend, reviennent quand on remonte */
+let fabY = 0;
+function fabWatch() {
+  const y = window.scrollY, h = document.documentElement.scrollHeight, v = window.innerHeight;
+  const bas = y + v >= h - 140 && h > v + 40;
+  const descend = y > fabY + 6 && y > 120;
+  const monte = y < fabY - 6;
+  if (bas || descend) document.body.classList.add('fab-off');
+  else if (monte || y < 120) document.body.classList.remove('fab-off');
+  fabY = y;
 }
 function toggleSide(open) {
   const s = $('#side'); if (!s) return;
@@ -279,12 +309,15 @@ function renderSide() {
     <div class="brand"><div class="logo">C</div><b>Contacts</b></div>
     <button class="sbtn" id="sSearch">${ico('search')}Rechercher<span class="kbd only-d">⌘K</span></button>
     <button class="sbtn" id="sNew">${ico('plus')}Ajouter un contact</button>
+    <div class="shead">Espaces</div>
+    <button class="sbtn ${S.page === 'contacts' ? 'on' : ''}" id="sPContacts">${ico('users')}Contacts<span class="n">${S.stats ? fmtN(S.stats.total) : ''}</span></button>
+    <button class="sbtn ${S.page === 'campagnes' ? 'on' : ''}" id="sPCamp">${ico('send')}Campagnes<span class="n">${S.camps ? fmtN(S.camps.total_envois) : ''}</span></button>
     <div class="shead">Favoris</div>
     ${favs.length ? favs.map(r => `<button class="sbtn" data-fav="${r.id}"><span class="av" style="width:18px;height:18px;font-size:9px;background:${avColor(r.id)}">${esc(initials(r))}</span>${esc(fullName(r))}</button>`).join('')
       : '<p class="small mut" style="padding:0 8px;margin:2px 0">Touche l’étoile d’un contact pour l’ajouter ici.</p>'}
     ${S.favs.length > 5 ? `<button class="sbtn" data-vue="favoris" style="color:var(--acc)">Tout voir</button>` : ''}
     <div class="shead">Vues</div>
-    ${VUES_BASE.map(v => `<button class="sbtn ${S.vue === v.id ? 'on' : ''}" data-vue="${v.id}">${ico(v.icon)}${esc(v.nom)}<span class="n">${vueCount(v)}</span></button>`).join('')}
+    ${VUES_BASE.map(v => `<button class="sbtn ${S.page === 'contacts' && S.vue === v.id ? 'on' : ''}" data-vue="${v.id}">${ico(v.icon)}${esc(v.nom)}<span class="n">${vueCount(v)}</span></button>`).join('')}
     ${S.vues.length ? `<div class="shead">Mes vues</div>` + S.vues.map(v => `<button class="sbtn ${S.vue === 'v' + v.id ? 'on' : ''}" data-vue="v${v.id}">${ico('eye')}${esc(v.nom)}<span class="x" data-delvue="${v.id}" role="button" aria-label="Supprimer la vue ${esc(v.nom)}">✕</span></button>`).join('') : ''}
     <div class="sfoot">
       <span class="small mut" style="overflow:hidden;text-overflow:ellipsis">${esc(S.user?.email || '')}</span>
@@ -294,10 +327,12 @@ function renderSide() {
   $('#sSearch').onclick = () => { toggleSide(false); $('#q').focus(); };
   $('#sNew').onclick = () => { toggleSide(false); openForm(null); };
   $('#sOut').onclick = logout;
+  $('#sPContacts').onclick = () => { toggleSide(false); showPage('contacts'); };
+  $('#sPCamp').onclick = () => { toggleSide(false); showPage('campagnes'); };
   $$('[data-fav]', s).forEach(b => b.onclick = () => { toggleSide(false); openFiche(+b.dataset.fav); });
   $$('[data-vue]', s).forEach(b => b.onclick = e => {
     if (e.target.closest('[data-delvue]')) return;
-    toggleSide(false); applyVue(b.dataset.vue);
+    toggleSide(false); showPage('contacts'); applyVue(b.dataset.vue);
   });
   $$('[data-delvue]', s).forEach(x => x.onclick = async e => {
     e.stopPropagation();
@@ -315,6 +350,7 @@ function applyVue(id) {
     nom = v.nom; f = v.f; id = v.id;
   }
   S.vue = id;
+  if (S.page !== 'contacts') showPage('contacts', true);
   S.f = Object.assign(emptyF(), JSON.parse(JSON.stringify(f)), { tri: S.f.tri });
   $('#q').value = S.f.q || '';
   $('#vTitle').textContent = nom;
@@ -363,6 +399,9 @@ function renderChips() {
   S.f.secteurs.forEach(v => add(v, () => S.f.secteurs = S.f.secteurs.filter(x => x !== v)));
   S.f.tags.forEach(v => add('#' + v, () => S.f.tags = S.f.tags.filter(x => x !== v)));
   if (S.f.zone) add('Zone : ' + S.f.zone, () => S.f.zone = '');
+  if (S.f.campagne_recue) add('A reçu : ' + campShort(campName(S.f.campagne_recue)), () => S.f.campagne_recue = '');
+  if (S.f.campagne_non_recue) add('N’a pas reçu : ' + campShort(campName(S.f.campagne_non_recue)), () => S.f.campagne_non_recue = '');
+  if (S.f.nb_campagnes) add({ '0': 'Jamais contacté', '1': '1 campagne reçue', '2+': '2 campagnes ou plus' }[S.f.nb_campagnes], () => S.f.nb_campagnes = '');
   if (S.f.joignables) add('Joignables', () => S.f.joignables = false);
   if (S.f.avec_tel) add('Avec téléphone', () => S.f.avec_tel = false);
   if (S.f.accord) add('Accord e-mail', () => S.f.accord = false);
@@ -396,9 +435,17 @@ function renderList() {
   const all = $('#cbAll', L);
   if (all) all.onchange = () => { S.rows.forEach(r => all.checked ? S.sel.add(r.id) : S.sel.delete(r.id)); renderList(); };
   const left = S.total - S.rows.length;
-  $('#more').innerHTML = left > 0 ? `<button class="btn" id="moreBtn">Afficher ${Math.min(PAGE, left)} de plus · ${fmtN(left)} restants</button>` : '';
-  const mb = $('#moreBtn'); if (mb) mb.onclick = () => { mb.disabled = true; mb.textContent = 'Chargement…'; load(false); };
+  $('#more').innerHTML = left > 0
+    ? `<button class="morebtn" id="moreBtn"><span class="lbl">Afficher ${Math.min(PAGE, left)} de plus</span><span class="sub">${fmtN(S.rows.length)} affichés sur ${fmtN(S.total)}</span><span class="ldots" aria-hidden="true"><i></i><i></i><i></i></span></button>`
+    : `<div class="endlist"><span>✓</span>${S.total > 1 ? 'Les ' + fmtN(S.total) + ' contacts sont affichés' : 'Fin de la liste'}</div>`;
+  const mb = $('#moreBtn');
+  if (mb) {
+    const go = () => { if (mb.classList.contains('busy')) return; mb.classList.add('busy'); load(false); };
+    mb.onclick = go;
+    if ('IntersectionObserver' in window) { const io = new IntersectionObserver(es => { if (es.some(e => e.isIntersecting)) { io.disconnect(); go(); } }, { rootMargin: '0px 0px 200px 0px' }); io.observe(mb); }
+  }
   renderBulk();
+  fabWatch();
 }
 function togglePick(id, on) {
   if (on === undefined) on = !S.sel.has(id);
@@ -410,7 +457,7 @@ function listHtml() {
     const [b, t] = rowBadge(r); const sel = S.sel.has(r.id);
     return `<div class="row ${sel ? 'sel' : ''}" data-id="${r.id}">
       <button class="av ${sel ? 'sel' : ''}" style="border:0;background:${avColor(r.id)}" data-pick="${r.id}" aria-label="Sélectionner ${esc(fullName(r))}">${sel ? '✓' : esc(initials(r))}</button>
-      <div class="txt"><span class="nm">${r.favori ? '<span style="color:#C98A00">★</span> ' : ''}${esc(fullName(r))}</span><span class="sub">${esc(subLine(r))}</span></div>
+      <div class="txt"><span class="nm">${r.favori ? '<span style="color:#C98A00">★</span> ' : ''}${esc(fullName(r))}</span><span class="sub">${(r.camps || []).length ? `<span class="dots" title="${esc((r.camps || []).map(c => c.n).join(' · '))}">${(r.camps || []).map(c => campDot(c.c)).join('')}</span>` : ''}${esc(subLine(r))}</span></div>
       ${b ? `<span class="chip ${t}">${esc(b)}</span>` : ''}
     </div>`;
   }).join('')}</div>`;
@@ -421,10 +468,12 @@ function tableHtml() {
   return `<div class="tablewrap"><table class="grid"><thead><tr>
       <th><label class="sr" for="cbAll">Tout sélectionner</label><input type="checkbox" id="cbAll" ${allSel ? 'checked' : ''}></th>
       ${th('user', 'Nom', 'name')}${th('mail', 'E-mail')}${th('phone', 'Téléphone')}${th('build', 'Entreprise / métier')}
-      ${th('pin', 'Ville')}${th('source', 'Origine')}${th('flag', 'Statut')}${th('tag', 'Étiquettes')}${th('cal', 'Dernier envoi')}
+      ${th('pin', 'Ville')}${th('source', 'Origine')}${th('flag', 'Statut')}${th('send', 'Campagnes reçues')}${th('tag', 'Étiquettes')}${th('cal', 'Dernier envoi')}
     </tr></thead><tbody>${S.rows.map(r => {
       const sel = S.sel.has(r.id);
-      const tags = (r.tags || []).slice(0, 2).map(x => `<span class="chip out">${esc(x)}</span>`).join('') + ((r.tags || []).length > 2 ? `<span class="chip out">+${r.tags.length - 2}</span>` : '');
+      const tags = (r.tags || []).slice(0, 2).map(x => `<span class="chip" style="${tagStyle(x)}">${esc(x)}</span>`).join('') + ((r.tags || []).length > 2 ? `<span class="chip out">+${r.tags.length - 2}</span>` : '');
+      const cps = r.camps || [];
+      const camps = cps.slice(0, 2).map(c => `<span class="cchip${c.st ? ' cprog' : ''}" title="${esc(c.n)} · ${esc(fmtD(c.d))}${c.st ? ' (programmé)' : ''}">${campDot(c.c)}${esc(campShort(c.n))}</span>`).join('') + (cps.length > 2 ? `<span class="chip out">+${cps.length - 2}</span>` : '');
       const [b, t] = statusCell(r);
       return `<tr class="${sel ? 'sel' : ''}" data-id="${r.id}">
         <td><input type="checkbox" data-cb="${r.id}" ${sel ? 'checked' : ''} aria-label="Sélectionner ${esc(fullName(r))}"></td>
@@ -435,8 +484,9 @@ function tableHtml() {
         <td>${esc(r.ville || '') || '<span class="mut">—</span>'}</td>
         <td><span class="chip t-gray">${esc(ORIG_LABEL[r.origine] || r.origine)}</span></td>
         <td>${b ? `<span class="chip ${t}" title="${esc(r.motif_exclusion || '')}">${esc(b)}</span>` : ''}</td>
+        <td><div class="tags">${camps || '<span class="mut">—</span>'}</div></td>
         <td><div class="tags">${tags || '<span class="mut">—</span>'}</div></td>
-        <td class="dim">${esc(fmtD(r.date_dernier_envoi)) || '—'}</td>
+        <td class="dim">${esc(fmtD(cps.length ? cps[cps.length - 1].d : r.date_dernier_envoi)) || '—'}</td>
       </tr>`;
     }).join('')}</tbody></table></div>`;
 }
@@ -514,7 +564,7 @@ async function openFiche(id) {
   renderFiche(d, c);
 }
 function tagEditor(tags) {
-  return `<div class="tagbox" id="tagbox">${tags.map(t => `<span class="chip t-acc" data-tag="${esc(t)}">${esc(t)}<button type="button" aria-label="Retirer ${esc(t)}">✕</button></span>`).join('')}
+  return `<div class="tagbox" id="tagbox">${tags.map(t => `<span class="chip" style="${tagStyle(t)}" data-tag="${esc(t)}">${esc(t)}<button type="button" aria-label="Retirer ${esc(t)}">✕</button></span>`).join('')}
     <label class="sr" for="tagIn">Ajouter une étiquette</label><input id="tagIn" placeholder="+ étiquette (Entrée)" list="tagList"></div>
     <datalist id="tagList">${(S.stats?.tags || []).map(t => `<option value="${esc(t.v)}">`).join('')}</datalist>`;
 }
@@ -523,7 +573,7 @@ function bindTagEditor(root) {
   const addTag = v => {
     v = v.trim().replace(/,$/, ''); if (!v) return;
     if ($$('[data-tag]', box).some(x => x.dataset.tag.toLowerCase() === v.toLowerCase())) return;
-    const s = document.createElement('span'); s.className = 'chip t-acc'; s.dataset.tag = v;
+    const s = document.createElement('span'); s.className = 'chip'; s.style.cssText = tagStyle(v); s.dataset.tag = v;
     s.innerHTML = `${esc(v)}<button type="button" aria-label="Retirer ${esc(v)}">✕</button>`;
     box.insertBefore(s, inp.previousElementSibling);
   };
@@ -594,6 +644,7 @@ function renderFiche(d, c) {
       </div>
       <div class="card"><h4>Coordonnées et suivi</h4>${formFields(c)}</div>
       ${c.accroche ? `<div class="card"><h4>Accroche utilisée</h4><p class="small" style="margin:0 0 6px;line-height:1.45">${esc(c.accroche)}</p></div>` : ''}
+      <div class="card"><h4>Campagnes reçues <span class="mut" id="envN" style="text-transform:none;letter-spacing:0"></span></h4><div id="envBox"><p class="small mut" style="margin:4px 0 8px">Chargement…</p></div></div>
       ${suivi.length ? `<div class="card"><h4>Historique</h4>${suivi.map(x => `<div class="kv"><span>${esc(x[0])}</span><span>${esc(x[1])}</span></div>`).join('')}</div>` : ''}
       ${vers.length || nSrc ? `<div class="card"><h4>Données d’origine <span class="mut" style="text-transform:none;letter-spacing:0">${nSrc} source${nSrc > 1 ? 's' : ''}</span></h4>
         <button type="button" class="btn link small" id="dOrig" style="padding:0">Développer</button><div id="origBox" class="hidden"></div></div>` : ''}
@@ -605,6 +656,7 @@ function renderFiche(d, c) {
     <div class="dfoot"><span class="small mut" id="dMsg" style="margin-right:auto;align-self:center"></span>
       <button class="btn" type="button" id="dCancel">Fermer</button><button class="btn primary" type="button" id="dSave">Enregistrer</button></div>`;
   const getTags = bindTagEditor(d);
+  loadEnvois(d, c);
   $('#dX', d).onclick = closeDrawer;
   $('#dCancel', d).onclick = closeDrawer;
   $('#fForm', d).onsubmit = e => e.preventDefault();
@@ -684,6 +736,12 @@ function openFilters() {
       <div class="fgroup"><h4>Profil Beecook</h4>${pillGroup('profils', st.profils, v => v[0].toUpperCase() + v.slice(1))}</div>
       <div class="fgroup"><h4>Secteur</h4>${pillGroup('secteurs', st.secteurs, null, 8)}</div>
       <div class="fgroup"><h4>Étiquettes</h4>${pillGroup('tags', st.tags, null, 8)}</div>
+      <div class="fgroup"><h4>Campagnes</h4>
+        <div class="pills" data-nb>${[['0', 'Jamais contacté'], ['1', '1 campagne'], ['2+', '2 ou plus']].map(([v, l]) => `<button type="button" class="pill ${F.nb_campagnes === v ? 'on' : ''}" data-nbv="${v}">${l}</button>`).join('')}</div>
+        <div class="fgrid">
+          <label class="f">A reçu<select id="fRecue"><option value="">Peu importe</option>${campOpts(F.campagne_recue)}</select></label>
+          <label class="f">N’a pas reçu<select id="fNonRecue"><option value="">Peu importe</option>${campOpts(F.campagne_non_recue)}</select></label>
+        </div></div>
       <div class="fgroup"><h4>Zone</h4><label class="sr" for="fZone">Zone</label><select class="sel" id="fZone"><option value="">Toutes les zones</option>${(st.zones || []).map(z => `<option value="${esc(z.v)}" ${F.zone === z.v ? 'selected' : ''}>${esc(z.v)} (${fmtN(z.n)})</option>`).join('')}</select></div>
       <div class="fgroup" style="gap:0">${tog('joignables', 'Joignables par e-mail seulement')}${tog('avec_tel', 'Avec téléphone')}${tog('accord', 'Accord e-mail enregistré')}${tog('favoris', 'Favoris')}${tog('exclus', 'Exclus des envois seulement')}</div>
     </div>
@@ -700,6 +758,9 @@ function openFilters() {
   bindPills();
   $$('[data-tog]', d).forEach(t => t.onchange = () => { F[t.dataset.tog] = t.checked; });
   $('#fZone', d).onchange = e => { F.zone = e.target.value; };
+  $$('[data-nbv]', d).forEach(b => b.onclick = () => { F.nb_campagnes = F.nb_campagnes === b.dataset.nbv ? '' : b.dataset.nbv; $$('[data-nbv]', d).forEach(x => x.classList.toggle('on', x.dataset.nbv === F.nb_campagnes)); });
+  $('#fRecue', d).onchange = e => { F.campagne_recue = e.target.value; };
+  $('#fNonRecue', d).onchange = e => { F.campagne_non_recue = e.target.value; };
   $('#dX', d).onclick = closeDrawer;
   $('#fReset', d).onclick = () => { const tri = S.f.tri, q = S.f.q; S.f = emptyF(); S.f.tri = tri; S.f.q = q; closeDrawer(); filtersChanged(); };
   $('#fApply', d).onclick = () => { S.f = Object.assign(F, { q: $('#q').value, tri: S.f.tri }); closeDrawer(); filtersChanged(); };
@@ -711,6 +772,163 @@ function openFilters() {
       closeDrawer(); await refreshMeta(); applyVue('v' + v.id); toast('Vue enregistrée');
     } catch (e) { toast(errMsg(e)); }
   };
+}
+
+/* ---------- espaces : contacts / campagnes ---------- */
+function showPage(pg, silent) {
+  S.page = pg;
+  const c = pg === 'campagnes';
+  $('#pContacts').classList.toggle('hidden', c);
+  $('#pCamp').classList.toggle('hidden', !c);
+  $('#topC').classList.toggle('hidden', c);
+  $('#topK').classList.toggle('hidden', !c);
+  const fab = $('#fab'); if (fab) fab.classList.toggle('hidden', c);
+  const cam = $('#camFab'); if (cam) cam.classList.toggle('hidden', c);
+  $('#nContacts').classList.toggle('on', !c);
+  $('#nCamp').classList.toggle('on', c);
+  if (c) { $('#vTitle').textContent = 'Campagnes'; $('#vCount').textContent = ''; if (!silent) renderCampagnes(); }
+  else if (!silent) { $('#vTitle').textContent = (VUES_BASE.find(v => v.id === S.vue) || {}).nom || 'Contacts'; renderChips(); }
+  renderSide();
+}
+const MARKETING = ['prospection', 'relance', 'fidelisation'];
+const TYPE_LABEL = { prospection: 'Prospection', relance: 'Relance', fidelisation: 'Fidélisation', transactionnel: 'Automatique', interne: 'Interne' };
+function campOpts(sel) {
+  return (S.camps?.campagnes || []).filter(c => MARKETING.includes(c.type))
+    .map(c => `<option value="${esc(c.slug)}" ${c.slug === sel ? 'selected' : ''}>${esc(campShort(c.nom))}${c.nb + c.programmes ? ' (' + fmtN(c.nb + c.programmes) + ')' : ''}</option>`).join('');
+}
+function weekStart(d) { const x = new Date(d); x.setHours(0, 0, 0, 0); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; }
+function isoWeek(d) { const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); const day = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - day); const y0 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1)); return Math.ceil(((t - y0) / 86400000 + 1) / 7); }
+const dm = x => x ? new Date(x).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) : '';
+function goContacts(f) {
+  showPage('contacts', true);
+  S.vue = null;
+  S.f = Object.assign(emptyF(), f, { tri: S.f.tri });
+  $('#q').value = '';
+  filtersChanged();
+  window.scrollTo(0, 0);
+}
+function shortList(items, n, render, id) {
+  if (!items.length) return '';
+  const first = items.slice(0, n).map(render).join('');
+  const rest = items.length > n ? `<div class="hidden" id="${id}">${items.slice(n).map(render).join('')}</div><button class="btn link small" data-more="${id}">Tout voir (${items.length})</button>` : '';
+  return first + rest;
+}
+async function renderCampagnes(force) {
+  const P = $('#pCamp');
+  if (force || !S.camps) {
+    P.innerHTML = '<p class="empty">Chargement…</p>';
+    try { S.camps = await rpc('crm_campagnes_vue'); } catch (e) { P.innerHTML = `<p class="empty">${esc(errMsg(e))}</p>`; return; }
+    renderSide();
+  }
+  const K = S.camps;
+  const camps = (K.campagnes || []).filter(c => MARKETING.includes(c.type));
+  const actives = camps.filter(c => c.nb + c.programmes > 0);
+  const cov = K.couverture || { contacts: 0, jamais: 0, une: 0, plusieurs: 0 };
+  const pct = v => cov.contacts ? Math.max(0, Math.round(v / cov.contacts * 1000) / 10) : 0;
+  // frise : semaines du premier envoi (max 12 semaines) à la semaine prochaine
+  const fr = K.frise || [];
+  const now = weekStart(new Date());
+  let first = fr.length ? weekStart(fr.reduce((m, x) => x.semaine < m ? x.semaine : m, fr[0].semaine)) : new Date(now);
+  const minW = new Date(now); minW.setDate(minW.getDate() - 7 * 11);
+  if (first < minW) first = minW;
+  const lastFr = fr.length ? weekStart(fr.reduce((m, x) => x.semaine > m ? x.semaine : m, fr[0].semaine)) : now;
+  const end = new Date(Math.max(now.getTime(), lastFr.getTime()));
+  const weeks = []; for (let w = new Date(first); w <= end; w.setDate(w.getDate() + 7)) weeks.push(new Date(w));
+  const key = d => { const x = new Date(d); return x.getFullYear() + '-' + String(x.getMonth() + 1).padStart(2, '0') + '-' + String(x.getDate()).padStart(2, '0'); };
+  const cell = {}; let mx = 1;
+  fr.forEach(x => { const k = x.campagne + '|' + key(weekStart(x.semaine)); cell[k] = cell[k] || { nb: 0, prog: 0 }; cell[k].nb += x.nb; cell[k].prog += x.prog; mx = Math.max(mx, cell[k].nb); });
+  const rowsF = actives.slice().sort((a, b) => String(a.premier).localeCompare(String(b.premier)));
+  const friseHtml = rowsF.length ? `<div class="frise" style="--n:${weeks.length}">
+      <div class="fh lab">Campagne</div>${weeks.map(w => `<div class="fh ${key(w) === key(now) ? 'now' : ''}">S${isoWeek(w)}<span>${dm(w)}</span></div>`).join('')}
+      ${rowsF.map(c => `<button class="fl" data-camp="${esc(c.slug)}" title="${esc(c.nom)}">${campDot(c.couleur)}<span>${esc(campShort(c.nom))}</span></button>${weeks.map(w => {
+        const v = cell[c.slug + '|' + key(w)];
+        if (!v) return `<div class="fc ${key(w) === key(now) ? 'now' : ''}"></div>`;
+        const sz = Math.round(18 + 16 * Math.sqrt(v.nb / mx));
+        const prog = v.prog && v.prog === v.nb;
+        return `<div class="fc ${key(w) === key(now) ? 'now' : ''}"><button class="bub ${prog ? 'bprog' : ''}" data-camp="${esc(c.slug)}" style="--c:${esc(c.couleur)};width:${sz}px;height:${sz}px" title="${esc(c.nom)} · semaine du ${dm(w)} : ${v.nb} envoi${v.nb > 1 ? 's' : ''}${v.prog ? ' (dont ' + v.prog + ' programmé' + (v.prog > 1 ? 's' : '') + ')' : ''}">${v.nb}</button></div>`;
+      }).join('')}`).join('')}
+    </div>` : '<p class="small mut">Aucun envoi enregistré pour l’instant.</p>';
+  const rap = K.rapproches || [], dbl = K.doublons || [];
+  const alertes = `
+    ${dbl.length ? `<div class="alert bad"><b>${fmtN(dbl.length)} personne${dbl.length > 1 ? 's ont' : ' a'} reçu la même campagne plusieurs fois</b>
+      ${shortList(dbl, 5, x => `<button class="aitem" data-pid="${x.prospect_id || ''}">${esc(x.email)}<span>${esc(campShort(x.nom_campagne))} · ${x.nb} fois (${esc((x.dates || []).join(', '))})</span></button>`, 'mDbl')}</div>` : `<div class="alert ok"><b>✓ Personne n’a reçu deux fois la même campagne.</b></div>`}
+    ${rap.length ? `<div class="alert warn"><b>${fmtN(rap.length)} personne${rap.length > 1 ? 's ont' : ' a'} reçu 2 campagnes différentes à moins de 7 jours d’écart</b>
+      <span class="small mut">Laisse au moins une semaine entre deux mails à la même personne.</span>
+      ${shortList(rap, 5, x => `<button class="aitem" data-pid="${x.prospect_id || ''}">${esc(x.email)}<span>${esc(campShort(x.c1))} → ${esc(campShort(x.c2))} · ${String(x.jours).replace('.', ',')} j</span></button>`, 'mRap')}</div>` : ''}`;
+  const card = c => {
+    const vide = !(c.nb + c.programmes);
+    return `<div class="ccard ${vide ? 'vide' : ''}" style="--c:${esc(c.couleur)}">
+      <div class="chd"><label class="cpick" title="Changer la couleur de l’étiquette">${campDot(c.couleur, true)}<input type="color" value="${esc(c.couleur)}" data-color="${esc(c.slug)}"></label>
+        <button class="cname" data-camp="${esc(c.slug)}">${esc(campShort(c.nom))}<span class="cmeta">${esc(c.marque || '')}${c.marque ? ' · ' : ''}${esc(TYPE_LABEL[c.type] || c.type)}</span></button></div>
+      <div class="cnums">
+        <div><b>${fmtN(c.nb)}</b><span>envoyé${c.nb > 1 ? 's' : ''}</span></div>
+        <div><b>${fmtN(c.personnes)}</b><span>personne${c.personnes > 1 ? 's' : ''}</span></div>
+        <div class="${c.programmes ? 'p' : ''}"><b>${fmtN(c.programmes)}</b><span>à venir</span></div>
+        <div class="${c.rebonds ? 'r' : ''}"><b>${fmtN(c.rebonds)}</b><span>rebond${c.rebonds > 1 ? 's' : ''}</span></div>
+      </div>
+      <div class="cfoot"><span class="small mut">${vide ? 'Pas encore envoyée' : c.premier === c.dernier || dm(c.premier) === dm(c.dernier) ? 'Le ' + esc(fmtD(c.premier)) : 'Du ' + esc(dm(c.premier)) + ' au ' + esc(fmtD(c.dernier))}</span>
+        <span class="cbtns">${vide ? '' : `<button class="btn small" data-recue="${esc(c.slug)}">Ont reçu</button>`}<button class="btn small" data-nonrecue="${esc(c.slug)}">Pas reçu</button></span></div>
+    </div>`;
+  };
+  const sync = K.synchro ? `Historique Resend importé le ${fmtD(K.synchro)}` : '';
+  P.innerHTML = `<div class="cwrap">
+    <div class="kpis">
+      <button class="kpi" data-go="all"><b>${fmtN(cov.contacts)}</b><span>contacts joignables</span></button>
+      <button class="kpi k0" data-go="0"><b>${fmtN(cov.jamais)}</b><span>jamais contactés</span></button>
+      <button class="kpi k1" data-go="1"><b>${fmtN(cov.une)}</b><span>1 campagne reçue</span></button>
+      <button class="kpi k2" data-go="2+"><b>${fmtN(cov.plusieurs)}</b><span>2 campagnes ou plus</span></button>
+    </div>
+    <div class="covbar" title="Part des contacts joignables déjà touchés">
+      <i class="c0" style="width:${pct(cov.jamais)}%"></i><i class="c1" style="width:${pct(cov.une)}%"></i><i class="c2" style="width:${pct(cov.plusieurs)}%"></i>
+    </div>
+    <div class="leg small mut"><span><i class="c0"></i>Jamais contactés ${pct(cov.jamais)} %</span><span><i class="c1"></i>1 campagne ${pct(cov.une)} %</span><span><i class="c2"></i>2 ou plus ${pct(cov.plusieurs)} %</span></div>
+    <section class="csec"><h3>Frise des envois <span class="small mut">par semaine · touche une bulle pour voir les destinataires</span></h3>
+      <div class="fwrap">${friseHtml}</div>
+      <div class="leg small mut"><span><i class="bubl"></i>envoyés</span><span><i class="bubl bprog"></i>programmés</span><span>${esc(sync)}</span></div></section>
+    <section class="csec"><h3>À surveiller</h3>${alertes}</section>
+    <section class="csec"><h3>Campagnes <span class="small mut">${actives.length} envoyée${actives.length > 1 ? 's' : ''} · touche la pastille pour changer la couleur</span></h3>
+      <div class="cgrid">${camps.slice().sort((a, b) => ((b.nb + b.programmes) > 0) - ((a.nb + a.programmes) > 0) || String(b.dernier || '').localeCompare(String(a.dernier || ''))).map(card).join('')}</div></section>
+  </div>`;
+  $$('[data-go]', P).forEach(b => b.onclick = () => { const g = b.dataset.go; goContacts(g === 'all' ? { joignables: true } : { nb_campagnes: g, joignables: true }); });
+  $$('[data-camp]', P).forEach(b => b.onclick = () => openCampagne(b.dataset.camp));
+  $$('[data-recue]', P).forEach(b => b.onclick = () => goContacts({ campagne_recue: b.dataset.recue }));
+  $$('[data-nonrecue]', P).forEach(b => b.onclick = () => goContacts({ campagne_non_recue: b.dataset.nonrecue, joignables: true }));
+  $$('[data-pid]', P).forEach(b => b.onclick = () => { if (b.dataset.pid) openFiche(+b.dataset.pid); });
+  $$('[data-more]', P).forEach(b => b.onclick = () => { $('#' + b.dataset.more).classList.remove('hidden'); b.remove(); });
+  $$('[data-color]', P).forEach(inp => inp.onchange = async () => {
+    try { await rpc('crm_campagne_enregistrer', { p_slug: inp.dataset.color, p_nom: null, p_couleur: inp.value }); toast('Couleur enregistrée'); renderCampagnes(true); }
+    catch (e) { toast(errMsg(e)); }
+  });
+}
+async function openCampagne(slug) {
+  const d = drawer(`<div class="dhead"><button class="icon bare" id="dX" aria-label="Fermer">${ico('back')}</button><h2>Chargement…</h2></div><div class="dbody"></div>`);
+  $('#dX', d).onclick = closeDrawer;
+  let r;
+  try { r = await rpc('crm_campagne_detail', { p_slug: slug }); } catch (e) { $('.dbody', d).innerHTML = `<p class="empty">${esc(errMsg(e))}</p>`; return; }
+  const c = r.campagne || {}; const env = r.envois || [];
+  const stLab = s => ({ delivered: ['Délivré', 't-ok'], opened: ['Ouvert', 't-ok'], clicked: ['Cliqué', 't-ok'], sent: ['Envoyé', 't-acc'], scheduled: ['Programmé', 't-pur'], bounced: ['Rebond', 't-bad'], complained: ['Signalé spam', 't-bad'] }[s] || [s || '—', 't-gray']);
+  const item = x => { const [l, t] = stLab(x.statut); return `<button class="erow" data-pid="${x.prospect_id || ''}"><span class="av" style="background:${avColor(x.prospect_id)}">${esc(initials(x))}</span><span class="txt"><span class="nm">${esc([x.prenom, x.nom].filter(Boolean).join(' ') || x.email)}</span><span class="sub">${esc(x.entreprise || x.email)}</span></span><span class="small mut">${esc(dm(x.envoye_le))}</span><span class="chip ${t}">${esc(l)}</span></button>`; };
+  d.innerHTML = `<div class="dhead"><button class="icon bare" id="dX" aria-label="Fermer">${ico('back')}</button><h2>${esc(campShort(c.nom))}</h2></div>
+    <div class="dbody">
+      <div class="hero">${campDot(c.couleur, true)}<div><h3 style="font-size:16px">${esc(c.nom)}</h3><div class="small mut">${esc(c.description || '')}</div></div></div>
+      <div class="cnums box"><div><b>${fmtN(env.length)}</b><span>envois</span></div><div><b>${fmtN(env.filter(x => x.statut === 'scheduled').length)}</b><span>programmés</span></div><div><b>${fmtN(env.filter(x => /bounced|complained/.test(x.statut || '')).length)}</b><span>rebonds</span></div><div><b>${fmtN(r.non_recus)}</b><span>pas reçu</span></div></div>
+      <div class="card"><h4>Destinataires</h4>${env.length ? shortList(env, 8, item, 'mEnv') : '<p class="small mut">Personne pour l’instant.</p>'}</div>
+    </div>
+    <div class="dfoot"><button class="btn" id="cNon">Voir ceux qui ne l’ont pas reçue</button>${env.length ? '<button class="btn primary" id="cOui">Voir dans Contacts</button>' : ''}</div>`;
+  $('#dX', d).onclick = closeDrawer;
+  $$('[data-pid]', d).forEach(b => b.onclick = () => { if (b.dataset.pid) openFiche(+b.dataset.pid); });
+  $$('[data-more]', d).forEach(b => b.onclick = () => { $('#' + b.dataset.more).classList.remove('hidden'); b.remove(); });
+  $('#cNon', d).onclick = () => { closeDrawer(); goContacts({ campagne_non_recue: slug, joignables: true }); };
+  const oui = $('#cOui', d); if (oui) oui.onclick = () => { closeDrawer(); goContacts({ campagne_recue: slug }); };
+}
+async function loadEnvois(d, c) {
+  const box = $('#envBox', d); if (!box) return;
+  let env = [];
+  try { env = await rpc('crm_envois_contact', { p_id: c.id }); } catch (e) { box.innerHTML = `<p class="small mut">${esc(errMsg(e))}</p>`; return; }
+  const mk = (env || []).filter(x => MARKETING.includes(x.type));
+  $('#envN', d).textContent = mk.length ? mk.length + ' envoi' + (mk.length > 1 ? 's' : '') : '';
+  if (!env.length) { box.innerHTML = '<p class="small mut" style="margin:4px 0 8px">Aucune campagne reçue pour l’instant.</p>'; return; }
+  box.innerHTML = `<div class="tline">${env.map(x => `<div class="ti ${MARKETING.includes(x.type) ? '' : 'auto'}">${campDot(x.couleur)}<div><b>${esc(campShort(x.nom))}</b><span class="small mut">${esc(fmtD(x.envoye_le))}${x.statut === 'scheduled' ? ' · programmé' : x.statut === 'bounced' ? ' · rebond' : ''}</span></div></div>`).join('')}</div>`;
 }
 
 /* ---------- PWA ---------- */
