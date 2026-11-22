@@ -1,5 +1,5 @@
 /* Contacts — appli de contacts centralisés (Supabase, espace crm du projet Malino) */
-const APP_VERSION = '1.3.1';
+const APP_VERSION = '1.4.0';
 const SB_URL = 'https://fcfkfuqzgsmckkxqfwuo.supabase.co';
 const SB_KEY = 'sb_publishable_a3SNrQOSCH20T5sKsJxuAA_s7H4yCSR';
 const sb = supabase.createClient(SB_URL, SB_KEY, {
@@ -266,7 +266,7 @@ function shell() {
   $$('.seg button').forEach(b => b.onclick = () => { S.mode = b.dataset.mode; localStorage.setItem('contacts-mode', S.mode); renderList(); });
   document.addEventListener('keydown', e => {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); const q = $('#q'); if (q) q.focus(); }
-    if (e.key === 'Escape') { closeDrawer(); toggleSide(false); }
+    if (e.key === 'Escape') { if ($('#mveil')) return closeApercu(); closeDrawer(); toggleSide(false); }
   });
   let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(renderList, 150); });
   window.addEventListener('scroll', fabWatch, { passive: true });
@@ -444,7 +444,7 @@ function renderList() {
   $$('[data-pick]', L).forEach(el => el.onclick = e => { e.stopPropagation(); togglePick(+el.dataset.pick); });
   $$('input[data-cb]', L).forEach(cb => cb.onchange = () => togglePick(+cb.dataset.cb, cb.checked));
   const all = $('#cbAll', L);
-  if (all) all.onchange = () => { S.rows.forEach(r => all.checked ? S.sel.add(r.id) : S.sel.delete(r.id)); renderList(); };
+  if (all) all.onchange = () => { S.rows.forEach(r => { all.checked ? S.sel.add(r.id) : S.sel.delete(r.id); paintPick(r.id); }); syncAllBox(); renderBulk(); };
   const left = S.total - S.rows.length;
   $('#more').innerHTML = left > 0
     ? `<button class="morebtn" id="moreBtn"><span class="lbl">Afficher ${Math.min(PAGE, left)} de plus</span><span class="sub">${fmtN(S.rows.length)} affichés sur ${fmtN(S.total)}</span><span class="ldots" aria-hidden="true"><i></i><i></i><i></i></span></button>`
@@ -453,10 +453,28 @@ function renderList() {
   renderBulk();
   fabWatch();
 }
+/* cocher un contact : on met à jour seulement la ligne touchée (avant, toute la liste était redessinée à chaque clic) */
 function togglePick(id, on) {
   if (on === undefined) on = !S.sel.has(id);
   on ? S.sel.add(id) : S.sel.delete(id);
-  renderList();
+  paintPick(id);
+  syncAllBox();
+  renderBulk();
+}
+function paintPick(id) {
+  const on = S.sel.has(id);
+  $$(`#list [data-id="${id}"]`).forEach(el => {
+    el.classList.toggle('sel', on);
+    const cb = $('input[data-cb]', el); if (cb) cb.checked = on;
+    const av = $('[data-pick]', el);
+    if (av) { av.classList.toggle('sel', on); const r = S.rows.find(x => x.id === id); av.textContent = on ? '✓' : (r ? initials(r) : ''); }
+  });
+}
+function syncAllBox() {
+  const all = $('#cbAll'); if (!all) return;
+  const n = S.rows.filter(r => S.sel.has(r.id)).length;
+  all.checked = !!S.rows.length && n === S.rows.length;
+  all.indeterminate = n > 0 && n < S.rows.length;
 }
 function listHtml() {
   return `<div class="cards">${S.rows.map(r => {
@@ -525,7 +543,7 @@ function renderBulk() {
     if (!confirm(`Supprimer définitivement ${n} contact${n > 1 ? 's' : ''} ?`)) return;
     try { const k = await rpc('crm_supprimer', { p_ids: ids() }); toast(`${k} supprimé${k > 1 ? 's' : ''}`); await refreshMeta(); load(true); } catch (e) { toast(errMsg(e)); }
   };
-  $('#bClr').onclick = () => { S.sel.clear(); renderList(); };
+  $('#bClr').onclick = () => { const ids = Array.from(S.sel); S.sel.clear(); ids.forEach(paintPick); syncAllBox(); renderBulk(); };
 }
 
 /* ---------- export CSV ---------- */
@@ -917,6 +935,7 @@ async function openCampagne(slug) {
   d.innerHTML = `<div class="dhead"><button class="icon bare" id="dX" aria-label="Fermer">${ico('back')}</button><h2>${esc(campShort(c.nom))}</h2></div>
     <div class="dbody">
       <div class="hero">${campDot(c.couleur, true)}<div><h3 style="font-size:16px">${esc(c.nom)}</h3><div class="small mut">${esc(c.description || '')}</div></div></div>
+      <button class="btn" id="cMail" style="align-self:flex-start">${ico('eye')}Voir le mail envoyé</button>
       <div class="cnums box"><div><b>${fmtN(env.length)}</b><span>envois</span></div><div><b>${fmtN(env.filter(x => x.statut === 'scheduled').length)}</b><span>programmés</span></div><div><b>${fmtN(env.filter(x => /bounced|complained/.test(x.statut || '')).length)}</b><span>rebonds</span></div><div><b>${fmtN(r.non_recus)}</b><span>pas reçu</span></div></div>
       <div class="card"><h4>Destinataires</h4>${env.length ? shortList(env, 8, item, 'mEnv') : '<p class="small mut">Personne pour l’instant.</p>'}</div>
     </div>
@@ -924,9 +943,51 @@ async function openCampagne(slug) {
   $('#dX', d).onclick = closeDrawer;
   $$('[data-pid]', d).forEach(b => b.onclick = () => { if (b.dataset.pid) openFiche(+b.dataset.pid); });
   $$('[data-more]', d).forEach(b => b.onclick = () => { $('#' + b.dataset.more).classList.remove('hidden'); b.remove(); });
+  $('#cMail', d).onclick = () => openApercu({ campagne: slug });
   $('#cNon', d).onclick = () => { closeDrawer(); goContacts({ campagne_non_recue: slug, joignables: true }); };
   const oui = $('#cOui', d); if (oui) oui.onclick = () => { closeDrawer(); goContacts({ campagne_recue: slug }); };
 }
+/* aperçu d'un mail envoyé : le vrai mail lu chez Resend, ou reconstitué à partir du modèle de la campagne */
+async function openApercu(q) {
+  closeApercu();
+  const w = document.createElement('div'); w.className = 'mveil'; w.id = 'mveil';
+  w.innerHTML = `<div class="modal" role="dialog" aria-modal="true" aria-label="Aperçu du mail">
+    <div class="mhead"><div class="mt"><b id="mSuj">Chargement du mail…</b><span class="small mut" id="mMeta"></span></div>
+      <button class="icon bare" id="mX" aria-label="Fermer">${ico('x')}</button></div>
+    <div class="mbody" id="mBody"><div class="mload"><span class="ldots"><i></i><i></i><i></i></span></div></div>
+    <div class="mfoot small mut" id="mFoot"></div></div>`;
+  document.body.appendChild(w);
+  w.onclick = e => { if (e.target === w) closeApercu(); };
+  $('#mX', w).onclick = closeApercu;
+  let r;
+  try {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch(SB_URL + '/functions/v1/crm-campagnes', { method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SB_KEY, Authorization: 'Bearer ' + (session ? session.access_token : SB_KEY) },
+      body: JSON.stringify(Object.assign({ action: 'apercu' }, q)) });
+    r = await res.json();
+    if (!res.ok || r.erreur) throw new Error(r.erreur || res.status);
+  } catch (e) { $('#mSuj', w).textContent = 'Aperçu indisponible'; $('#mBody', w).innerHTML = `<p class="empty">${esc(errMsg(e))}</p>`; return; }
+  if (!$('#mveil')) return;
+  const stl = { delivered: 'délivré', opened: 'ouvert', clicked: 'cliqué', sent: 'envoyé', scheduled: 'programmé', bounced: 'rebond', complained: 'signalé spam' };
+  $('#mSuj', w).textContent = r.sujet || '(sans objet)';
+  $('#mMeta', w).textContent = [r.email ? 'À ' + r.email : '', r.envoye_le ? fmtD(r.envoye_le) : '', stl[r.statut] || r.statut || '', r.campagne ? campShort(r.campagne) : ''].filter(Boolean).join(' · ');
+  $('#mFoot', w).textContent = r.source === 'resend' ? 'Mail exact, lu chez Resend.' : (r.note || r.message || '');
+  const B = $('#mBody', w);
+  if (r.html) {
+    const f = document.createElement('iframe');
+    f.className = 'mframe'; f.title = 'Contenu du mail';
+    f.setAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox');
+    f.srcdoc = String(r.html).replace(/<head([^>]*)>/i, '<head$1><base target="_blank">');
+    B.innerHTML = ''; B.appendChild(f);
+  } else if (r.texte) {
+    B.innerHTML = `<pre class="mtext">${esc(r.texte)}</pre>`;
+  } else {
+    B.innerHTML = `<div class="mnone">${ico('mail')}<p>${esc(r.message || 'Contenu non disponible.')}</p></div>`;
+  }
+}
+function closeApercu() { const w = $('#mveil'); if (w) w.remove(); }
+
 async function loadEnvois(d, c) {
   const box = $('#envBox', d); if (!box) return;
   let env = [];
@@ -934,7 +995,8 @@ async function loadEnvois(d, c) {
   const mk = (env || []).filter(x => MARKETING.includes(x.type));
   $('#envN', d).textContent = mk.length ? mk.length + ' envoi' + (mk.length > 1 ? 's' : '') : '';
   if (!env.length) { box.innerHTML = '<p class="small mut" style="margin:4px 0 8px">Aucune campagne reçue pour l’instant.</p>'; return; }
-  box.innerHTML = `<div class="tline">${env.map(x => `<div class="ti ${MARKETING.includes(x.type) ? '' : 'auto'}">${campDot(x.couleur)}<div><b>${esc(campShort(x.nom))}</b><span class="small mut">${esc(fmtD(x.envoye_le))}${x.statut === 'scheduled' ? ' · programmé' : x.statut === 'bounced' ? ' · rebond' : ''}</span></div></div>`).join('')}</div>`;
+  box.innerHTML = `<div class="tline">${env.map(x => `<button type="button" class="ti ${MARKETING.includes(x.type) ? '' : 'auto'}" data-env="${x.id}" title="Voir le mail">${campDot(x.couleur)}<div><b>${esc(campShort(x.nom))}</b><span class="small mut">${esc(fmtD(x.envoye_le))}${x.statut === 'scheduled' ? ' · programmé' : x.statut === 'bounced' ? ' · rebond' : ''}</span></div><span class="voir">${ico('eye')}Voir le mail</span></button>`).join('')}</div>`;
+  $$('[data-env]', box).forEach(b => b.onclick = () => openApercu({ envoi_id: +b.dataset.env }));
 }
 
 /* ---------- PWA ---------- */
