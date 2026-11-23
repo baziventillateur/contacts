@@ -12,7 +12,10 @@
   css.textContent = `
   .pcsec .pcl{display:flex;flex-direction:column;gap:6px}
   .pcit{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:1px solid var(--line);background:linear-gradient(135deg,#F7F4FF,#FFFFFF);border-radius:11px;padding:9px 11px;font:inherit;color:inherit;cursor:pointer}
-  .pcit:hover{border-color:var(--acc-line)}.pcit .pe{font-size:22px}.pcit .tx{flex:1;min-width:0}.pcit b{display:block;font-size:13.5px}.pcit .small{display:block;margin-top:1px}
+  .pcit:hover{border-color:var(--acc-line)}.pcit .pe{font-size:20px;width:36px;height:36px;display:grid;place-items:center;border-radius:10px;background:#EEE9FF;flex:none}.pcit .tx{flex:1;min-width:0}
+  .pcit .l1{display:flex;align-items:center;gap:6px;min-width:0}.pcit .l1 b{font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}.pcit .l1 .pctag{flex:none;margin:0}
+  .pcit .l2{display:flex;flex-wrap:wrap;gap:3px 9px;margin-top:3px;font-size:11.5px;color:var(--mut)}.pcit .l2 b{color:var(--ink);font-weight:700}
+  .pcit>svg{width:15px;height:15px;stroke:var(--mut2);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
   .pctag{display:inline-block;padding:1px 7px;border-radius:9px;font-size:10.5px;font-weight:700;margin-right:4px}.pctag.on{background:#DCFCE7;color:#15803D}.pctag.off{background:#EEF0F4;color:#6B7280}
   .mqchips{display:flex;gap:5px;flex-wrap:wrap;margin:0 0 8px}.mqchips button{border:1px solid var(--line);background:var(--panel);border-radius:14px;padding:3px 10px;font:600 12px Inter,system-ui,sans-serif;color:var(--mut);cursor:pointer}.mqchips button.on{background:var(--ink);color:#fff;border-color:var(--ink)}
   .pcq{display:inline-block;min-width:74px;text-align:center;padding:2px 6px;border-radius:7px;background:#EEE9FF;color:#4B2FD6;font-size:10.5px;font-weight:700;white-space:nowrap}
@@ -22,13 +25,23 @@
   .pcfam{display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-top:1px solid var(--line2);font-size:12.5px}.pcfam:first-child{border-top:0}.pcfam .tx{flex:1;min-width:0}.pcfam b{display:block;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pcfam .small{display:block}
   .pcvars{display:flex;gap:4px;flex-wrap:wrap;margin:-2px 0 2px}.pcvars button{border:1px solid var(--line);background:#F7F4FF;color:#4B2FD6;border-radius:6px;padding:1px 6px;font:600 11px ui-monospace,Menlo,monospace;cursor:pointer}
   .pcwhen{display:flex;gap:6px;align-items:center;flex-wrap:wrap;font-size:12.5px;color:var(--ink)}.seqed .pcwhen input,.seqed .pcwhen select{height:32px!important;border:1px solid var(--line);border-radius:7px;padding:0 6px;font-size:13px;background:var(--panel);width:auto!important}.seqed .pcwhen input{width:64px!important}.pcwhen>span{display:inline-flex;gap:6px;align-items:center}.pcwhen>span[hidden]{display:none}
-  .pcqui{border:1px solid #FDE68A;background:#FFFBEB;border-radius:9px;padding:7px 9px;font-size:12px;display:flex;flex-direction:column;gap:4px}
+  .pcqui{border:1px solid #FDE68A;background:#FFFBEB;border-radius:9px;padding:8px 10px;font-size:12px;display:flex;flex-direction:column;gap:6px}
+  .pcqui .echk{align-items:flex-start;line-height:1.35;font-size:12.5px;cursor:pointer}.pcqui input[type=radio]{width:16px;height:16px;flex:none;margin:1px 0 0;accent-color:var(--acc)}
+  .seqed .seact{position:sticky;bottom:-14px;z-index:2;margin:2px -14px -14px;padding:8px 14px 10px;background:var(--panel);border-top:1px solid var(--line2);box-shadow:0 -6px 14px rgba(20,30,60,.06)}
+  @media (max-width:899px){
+    .seqed .seact{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding-bottom:max(10px,env(safe-area-inset-bottom))}
+    .seqed .seact .sp{display:none}.seqed .seact .btn{height:36px;justify-content:center;font-size:13px;width:100%;margin:0}
+    #peVoir{order:1}#peTest{order:2}#peDel{order:3}#peOk{order:4}.seqed .seact:not(:has(#peDel)) #peOk{grid-column:1/-1}
+    .pcvars{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px;margin-right:-14px;padding-right:14px}.pcvars::-webkit-scrollbar{display:none}.pcvars button{flex:none}
+    .seqed textarea#peT{min-height:240px}
+  }
   .pcimg{width:100%;max-height:120px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
   .pcaide{font-size:11.5px;color:var(--mut);line-height:1.5;margin:0}.pcaide code{background:#F1F2F6;border-radius:4px;padding:0 4px;font-size:11px}
   `;
   document.head.appendChild(css);
 
   const quandTxt = e => e.minutes != null ? (e.minutes < 60 ? `+${e.minutes} min` : `+${String(Math.round(e.minutes / 6) / 10).replace('.', ',')} h`) + (e.jour ? ` · J+${e.jour}` : '') : `J+${e.jour} · ${e.heure ?? 18} h 30`;
+  const nomP = p => p.nom + (p.marque && !String(p.nom).toLowerCase().includes(String(p.marque).toLowerCase()) ? ' · ' + p.marque : '');
   const dateH = x => x ? new Date(x).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
 
   /* ---------- page Campagnes : parcours + filtre par marque ---------- */
@@ -52,8 +65,8 @@
     try {
       const r = await pcFn({ action: 'liste' }); const L = $('#pcList'); if (!L) return;
       const lst = (r.parcours || []).filter(p => !MQ || String(p.marque || '').toLowerCase() === MQ.toLowerCase());
-      L.innerHTML = lst.length ? lst.map(p => `<button class="pcit" data-pc="${esc(p.slug)}"><span class="pe">🌱</span><span class="tx"><b>${esc(p.nom)}${p.marque ? ` · ${esc(p.marque)}` : ''}</b>
-        <span class="small mut"><span class="pctag ${p.actif ? 'on' : 'off'}">${p.actif ? 'Actif' : 'En pause'}</span>${p.mails} mail${p.mails > 1 ? 's' : ''} · ${fmtN(p.en_cours)} en cours · ${fmtN(p.envoyes)} envoyé${p.envoyes > 1 ? 's' : ''} · version ${p.version}</span></span>${ico('right')}</button>`).join('')
+      L.innerHTML = lst.length ? lst.map(p => `<button class="pcit" data-pc="${esc(p.slug)}"><span class="pe">🌱</span><span class="tx"><span class="l1"><b>${esc(nomP(p))}</b><span class="pctag ${p.actif ? 'on' : 'off'}">${p.actif ? 'Actif' : 'En pause'}</span></span>
+        <span class="l2"><span><b>${p.mails}</b> mail${p.mails > 1 ? 's' : ''}</span><span><b>${fmtN(p.en_cours)}</b> en cours</span><span><b>${fmtN(p.envoyes)}</b> envoyé${p.envoyes > 1 ? 's' : ''}</span><span>v${p.version}</span></span></span>${ico('right')}</button>`).join('')
         : '<p class="small mut">Aucun parcours pour cette marque.</p>';
       $$('[data-pc]', L).forEach(b => b.onclick = () => openParcours(b.dataset.pc));
     } catch (e) { const L = $('#pcList'); if (L) L.innerHTML = `<p class="small mut">${esc(errMsg(e))}</p>`; }
@@ -74,7 +87,7 @@
     const P = q.parcours, et = q.etapes || [], st = q.stats || {}, envTot = et.reduce((a, e) => a + (e.envoyes || 0), 0);
     const vAnc = (q.versions || []).filter(v => v.version !== P.version && v.en_cours > 0);
     $('.dbody', d).innerHTML = `
-      <div class="hero"><span style="font-size:34px">🌱</span><div><h3 style="font-size:16px">${esc(P.nom)}${P.marque ? ` · ${esc(P.marque)}` : ''}</h3>
+      <div class="hero"><span style="font-size:34px">🌱</span><div><h3 style="font-size:16px">${esc(nomP(P))}</h3>
         <div class="small mut">Chaque nouvel inscrit reçoit ces mails un par un, au moment indiqué.</div></div></div>
       <div class="card seqc"><h4>Envoi automatique<label class="sw"><input type="checkbox" id="pcOn" ${P.actif ? 'checked' : ''}><i></i><span>${P.actif ? 'Actif' : 'En pause'}</span></label></h4>
         <p class="pcregle">Jamais plus d’un mail ${esc(P.marque || '')} par jour et par famille (relances et rapports compris) · jamais entre 21 h et 9 h · arrêt sur STOP, désinscription ou rebond · un mail en retard de plus de 4 jours est sauté.${P.depuis ? ` Actif pour les inscrits depuis le ${esc(dateH(P.depuis))}.` : ''}</p>
@@ -146,11 +159,11 @@
         <label class="f">Lien<input id="peBu" type="url" value="${esc(e.bouton_url || '')}" placeholder="https://"></label></div></details>
       <label class="f">Aperçu avec les données d’une famille (e-mail, facultatif)<input id="peF" type="email" placeholder="sinon : famille d’exemple (Nael, niveau 4)"></label>
       ${n ? `<div class="pcqui"><b>${pl(n, 'famille')} ${n > 1 ? 'sont' : 'est'} en cours sur cette version. Ce changement s’applique à :</b>
-        <label class="echk"><input type="radio" name="peQ" value="nouveaux" checked> Seulement les prochains inscrits (crée la version ${(q.parcours || {}).version + 1})</label>
-        <label class="echk"><input type="radio" name="peQ" value="tous"> Aussi les familles déjà en cours</label></div>` : ''}
+        <label class="echk"><input type="radio" name="peQ" value="nouveaux" checked><span>Seulement les prochains inscrits <span class="mut">(crée la version ${(q.parcours || {}).version + 1})</span></span></label>
+        <label class="echk"><input type="radio" name="peQ" value="tous"><span>Aussi les familles déjà en cours</span></label></div>` : ''}
       <div id="peFr" class="efr hidden"></div>
       <div class="mact seact">${neuf ? '' : '<button class="btn danger small" id="peDel">Supprimer</button>'}<span class="sp"></span>
-        <button class="btn small" id="peVoir">${ico('eye')}Aperçu</button><button class="btn small" id="peTest">${ico('send')}M’envoyer un test</button><button class="btn primary small" id="peOk">Enregistrer</button></div></div>`);
+        <button class="btn small" id="peVoir">${ico('eye')}Aperçu</button><button class="btn small" id="peTest">${ico('send')}Me l’envoyer</button><button class="btn primary small" id="peOk">Enregistrer</button></div></div>`);
     const mode = $('#peMode', w);
     mode.onchange = () => { $('#peMin', w).hidden = mode.value !== 'min'; $('#peJour', w).hidden = mode.value === 'min'; };
     const ta = $('#peT', w);
