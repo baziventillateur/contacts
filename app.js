@@ -1,5 +1,5 @@
 /* Contacts — appli de contacts centralisés (Supabase, espace crm du projet Malino) */
-const APP_VERSION = '1.12.1';
+const APP_VERSION = '1.13.0';
 const SHEET_URL = 'https://claude.ai/artifact/8CDf2v6LQcaRbUFmUVi4St'; // copie « Prospects PaceApp » (la base Contacts reste la référence)
 const SB_URL = 'https://fcfkfuqzgsmckkxqfwuo.supabase.co';
 const SB_KEY = 'sb_publishable_a3SNrQOSCH20T5sKsJxuAA_s7H4yCSR';
@@ -40,6 +40,7 @@ const I = {
   filter: '<path d="M4 6h16M7 12h10M10 18h4"/>',
   down: '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
   back: '<path d="M15 5l-7 7 7 7"/>',
   menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
@@ -234,6 +235,7 @@ async function refreshMeta() {
   if ($('#side')) renderSide();
   cachePut(c => { c.meta = Object.assign(c.meta || {}, { stats, vues: S.vues, favs: S.favs }); });
   refreshCamps(); // les chiffres des campagnes arrivent ensuite, sans bloquer la liste
+  persoCamps();
 }
 function refreshCamps() {
   return rpc('crm_campagnes_vue').then(k => {
@@ -1226,7 +1228,7 @@ async function openCampagne(slug) {
   d.innerHTML = `<div class="dhead"><button class="icon bare" id="dX" aria-label="Fermer">${ico('back')}</button><h2>${esc(campShort(c.nom))}</h2></div>
     <div class="dbody">
       <div class="hero">${campDot(c.couleur, true)}<div><h3 style="font-size:16px">${esc(c.nom)}</h3><div class="small mut">${esc(c.description || '')}</div></div></div>
-      <button class="btn" id="cMail" style="align-self:flex-start">${ico('eye')}Voir le mail envoyé</button>
+      <div class="cbtns"><button class="btn" id="cMail">${ico('eye')}Voir le mail envoyé</button><button class="btn" id="cAdd" hidden>${ico('plus')}Ajouter des contacts</button></div>
       <div class="cnums box"><div><b>${fmtN(env.length)}</b><span>envois</span></div><div><b>${fmtN(env.filter(x => x.statut === 'scheduled').length)}</b><span>programmés</span></div><div><b>${fmtN(env.filter(x => /bounced|complained/.test(x.statut || '')).length)}</b><span>rebonds</span></div><div><b>${fmtN(r.non_recus)}</b><span>pas reçu</span></div></div>
       <div class="card"><h4>Destinataires</h4>${env.length ? shortList(env, 8, item, 'mEnv') : '<p class="small mut">Personne pour l’instant.</p>'}</div>
     </div>
@@ -1235,6 +1237,7 @@ async function openCampagne(slug) {
   $$('[data-pid]', d).forEach(b => b.onclick = () => { if (b.dataset.pid) openFiche(+b.dataset.pid); });
   $$('[data-more]', d).forEach(b => b.onclick = () => { $('#' + b.dataset.more).classList.remove('hidden'); b.remove(); });
   $('#cMail', d).onclick = () => openApercu({ campagne: slug });
+  persoCamps().then(() => { const a = $('#cAdd', d); if (a && envoyable(slug)) { a.hidden = false; a.onclick = () => openChoixContacts(slug, env); } });
   $('#cNon', d).onclick = () => { closeDrawer(); goContacts({ campagne_non_recue: slug, joignables: true }); };
   const oui = $('#cOui', d); if (oui) oui.onclick = () => { closeDrawer(); goContacts({ campagne_recue: slug }); };
 }
@@ -1365,10 +1368,28 @@ function openTagLot(idsSel) {
 
 /* envoyer une campagne aux contacts cochés (ceux qui ne l'ont pas reçue) : vérification, aperçu, puis confirmation */
 const ENVOYABLES = ['malino-arabe-2311', 'malino-eiffage', 'malino-familles-btp', 'paceapp-guide-ctx'];
-const sendable = () => S.page === 'contacts' && ENVOYABLES.includes(S.f.campagne_non_recue);
+/* campagnes « mail perso » (mail rédigé à part, ex. cadeaux Malino avec un code par personne) : envoyées par crm-perso */
+const isPerso = slug => !!(S.perso || []).find(x => x.slug === slug);
+const envoyable = slug => ENVOYABLES.includes(slug) || isPerso(slug);
+let persoP = null;
+function persoCamps() {
+  if (!persoP) persoP = (async () => {
+    const { data: { session } } = await sb.auth.getSession();
+    const res = await fetch(SB_URL + '/functions/v1/crm-perso', { method: 'POST',
+      headers: { 'Content-Type': 'application/json', apikey: SB_KEY, Authorization: 'Bearer ' + (session ? session.access_token : SB_KEY) },
+      body: JSON.stringify({ action: 'campagnes' }) });
+    const r = await res.json().catch(() => ({}));
+    if (!res.ok || r.erreur) throw new Error(r.erreur || res.status);
+    S.perso = r.campagnes || [];
+    if (S.page === 'contacts' && S.f && isPerso(S.f.campagne_non_recue)) { renderChips(); renderBulk(); }
+    return S.perso;
+  })().catch(e => { persoP = null; S.perso = S.perso || []; return S.perso; });
+  return persoP;
+}
+const sendable = () => S.page === 'contacts' && envoyable(S.f.campagne_non_recue);
 async function fnCamp(body) {
   const { data: { session } } = await sb.auth.getSession();
-  const res = await fetch(SB_URL + '/functions/v1/crm-campagnes', { method: 'POST',
+  const res = await fetch(SB_URL + '/functions/v1/' + (isPerso(body.campagne) ? 'crm-perso' : 'crm-campagnes'), { method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: SB_KEY, Authorization: 'Bearer ' + (session ? session.access_token : SB_KEY) },
     body: JSON.stringify(body) });
   const r = await res.json().catch(() => ({}));
@@ -1384,6 +1405,7 @@ async function openEnvoi(slug, idsSel, onDone) {
   const draw = () => {
     const ok = r.ok.length, ex = Object.entries(r.ecartes).filter(([, v]) => v);
     $('#eCorps', w).innerHTML = `<div class="ebig ${ok ? '' : 'none'}"><b>${fmtN(ok)}</b><span>personne${ok > 1 ? 's' : ''} ${ok > 1 ? 'vont' : 'va'} recevoir ce mail</span></div>
+      ${r.note ? `<p class="enote">${esc(r.note)}</p>` : ''}
       ${ex.length ? `<ul class="eex">${ex.map(([k, v]) => `<li><b>${fmtN(v)}</b> écartée${v > 1 ? 's' : ''} : ${esc(MOTIFS[k] || k)}</li>`).join('')}</ul>` : ''}
       ${r.demandes >= 300 ? '<p class="small mut">300 contacts au maximum par envoi : relance l’envoi pour les suivants.</p>' : ''}
       <label class="echk"><input type="checkbox" id="eEc" ${ecart ? 'checked' : ''}> Laisser au moins 7 jours après un autre mail (conseillé)</label>
@@ -1414,6 +1436,51 @@ async function openEnvoi(slug, idsSel, onDone) {
   prep();
 }
 
+/* ajouter des contacts à une campagne depuis sa page : recherche, choix, puis le même aperçu et la même confirmation que l'envoi en lot */
+function openChoixContacts(slug, env) {
+  const nom = campShort(campName(slug));
+  const recus = new Set((env || []).map(x => x.prospect_id).filter(Boolean).map(Number));
+  const mails = new Set((env || []).map(x => String(x.email || '').toLowerCase()).filter(Boolean));
+  const choix = new Map();
+  const w = dialog(`Ajouter à « ${nom} »`, `<div class="pkq">${ico('search')}<input id="pkQ" type="search" placeholder="Nom, e-mail ou société" autocomplete="off" enterkeyhint="search"></div>
+    <div id="pkSel" class="pksel hidden"></div>
+    <div id="pkL" class="aclist"><p class="small mut" style="margin:2px 0">Tape quelques lettres pour chercher un contact.</p></div>
+    <div class="mact"><button class="btn" id="pkCancel">Annuler</button><button class="btn primary" id="pkGo" disabled>Continuer</button></div>`);
+  const L = $('#pkL', w), Q = $('#pkQ', w);
+  let rows = [], req = 0, t = 0;
+  const deja = r => recus.has(Number(r.id)) || (r.email && mails.has(String(r.email).toLowerCase()));
+  const drawSel = () => {
+    const box = $('#pkSel', w), n = choix.size;
+    box.classList.toggle('hidden', !n);
+    box.innerHTML = Array.from(choix.values()).map(r => `<button type="button" class="chip t-acc" data-un="${r.id}">${esc(fullName(r))} ${ico('x')}</button>`).join('');
+    $$('[data-un]', box).forEach(b => b.onclick = () => { choix.delete(+b.dataset.un); drawSel(); drawList(); });
+    const g = $('#pkGo', w); g.disabled = !n; g.textContent = n ? `Continuer (${n})` : 'Continuer';
+  };
+  const drawList = () => {
+    if (!rows.length) { L.innerHTML = `<p class="small mut" style="margin:2px 0">${Q.value.trim() ? 'Aucun contact trouvé.' : 'Tape quelques lettres pour chercher un contact.'}</p>`; return; }
+    L.innerHTML = rows.map(r => { const d = deja(r), on = choix.has(Number(r.id)), sansMail = !r.email;
+      return `<button type="button" class="acrow pkrow ${on ? 'on' : ''}" data-pk="${r.id}" ${d || sansMail ? 'disabled' : ''}>
+        <span class="av" style="background:${avColor(r.id)}">${esc(initials(r))}</span>
+        <span class="txt"><b>${esc(fullName(r))}</b><span class="small mut">${esc(r.email || 'Pas d’e-mail')}${r.entreprise ? ' · ' + esc(r.entreprise) : ''}</span></span>
+        ${d ? '<span class="chip t-ok">Déjà reçu</span>' : `<span class="pkc">${on ? ico('check') : ''}</span>`}</button>`; }).join('');
+    $$('[data-pk]', L).forEach(b => b.onclick = () => {
+      const id = +b.dataset.pk, r = rows.find(x => Number(x.id) === id);
+      if (choix.has(id)) choix.delete(id); else if (r) choix.set(id, r);
+      drawSel(); drawList();
+    });
+  };
+  const chercher = async () => {
+    const q = Q.value.trim(), my = ++req;
+    if (q.length < 2) { rows = []; drawList(); return; }
+    try { const d = await rpc('crm_liste', { p: { q, limit: 12, offset: 0 } }); if (my !== req) return; rows = d.rows || []; drawList(); }
+    catch (e) { if (my === req) L.innerHTML = `<p class="small mut">${esc(errMsg(e))}</p>`; }
+  };
+  Q.oninput = () => { clearTimeout(t); t = setTimeout(chercher, 250); };
+  $('#pkCancel', w).onclick = closeApercu;
+  $('#pkGo', w).onclick = () => { const ids = Array.from(choix.keys()); if (ids.length) openEnvoi(slug, ids, () => openCampagne(slug)); };
+  setTimeout(() => Q.focus(), 50);
+}
+
 /* ajouter un contact à une campagne depuis sa fiche : choix de la campagne, puis le même aperçu et la même confirmation que l'envoi en lot */
 async function openAjoutCamp(d, c) {
   if (!c.email) return toast('Ajoute d’abord un e-mail à ce contact');
@@ -1422,7 +1489,9 @@ async function openAjoutCamp(d, c) {
   if (!$('#mveil')) return;
   const recues = new Set((d._env || []).map(x => x.campagne));
   const all = S.camps.campagnes || [];
-  const camps = ENVOYABLES.map(s => all.find(x => x.slug === s) || { slug: s, nom: s });
+  await persoCamps();
+  if (!$('#mveil')) return;
+  const camps = ENVOYABLES.concat((S.perso || []).map(x => x.slug)).map(s => all.find(x => x.slug === s) || (S.perso || []).find(x => x.slug === s) || { slug: s, nom: s });
   const bloque = c.desinscrit ? 'Cette personne ne veut plus être contactée.' : c.a_exclure ? 'Ce contact est exclu des envois : désactive « Exclu des envois » dans sa fiche pour pouvoir lui écrire.' : '';
   $('#acCorps', w).innerHTML = (bloque ? `<p class="acwarn">${esc(bloque)}</p>` : `<p class="small mut" style="margin:0 0 6px">Tu verras le mail avant de confirmer. Il part tout de suite à <b>${esc(c.email)}</b>.</p>`)
     + `<div class="aclist">${camps.map(x => { const deja = recues.has(x.slug); return `<button type="button" class="acrow" data-camp="${esc(x.slug)}" ${deja || bloque ? 'disabled' : ''}>${campDot(x.couleur)}<span class="txt"><b>${esc(String(x.nom).replace(/[«»]/g, '').trim())}</b>${x.description ? `<span class="small mut">${esc(x.description)}</span>` : ''}</span>${deja ? '<span class="chip t-ok">Déjà reçue</span>' : ico('right')}</button>`; }).join('')}</div>`;

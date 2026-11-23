@@ -472,3 +472,20 @@ input.need{border-color:#E8B54A !important;background:#FFFBEF}
 }
 a.btn,a.sbtn{text-decoration:none;color:inherit}
 a.btn.primary{color:#fff}
+
+/* v1.13.0 — ajouter des contacts à une campagne depuis sa page */
+.cbtns{display:flex;gap:6px;flex-wrap:wrap}
+.pkq{display:flex;align-items:center;gap:7px;height:34px;border:1px solid var(--line);border-radius:8px;padding:0 9px;background:var(--panel)}
+.pkq:focus-within{border-color:var(--acc-line);box-shadow:0 0 0 3px #E8EEFB}
+.pkq svg{width:15px;height:15px;stroke:var(--mut2);fill:none;stroke-width:2;flex:none}
+.pkq input{flex:1;min-width:0;border:0;outline:none;background:none;font:inherit;font-size:13.5px;color:var(--ink)}
+.pksel{display:flex;flex-wrap:wrap;gap:4px}
+.pksel .chip{display:inline-flex;align-items:center;gap:3px;border:0;cursor:pointer;font:600 11.5px Inter,system-ui,sans-serif}
+.pksel .chip svg{width:11px;height:11px;stroke:currentColor;fill:none;stroke-width:2.4}
+.pkrow .av{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;font-size:10.5px;font-weight:700;color:var(--ink);flex:none}
+.pkrow.on{border-color:var(--acc-line);background:var(--acc-bg)}
+.pkc{width:18px;height:18px;border-radius:5px;border:1.5px solid var(--line);display:grid;place-items:center;flex:none}
+.pkrow.on .pkc{background:var(--acc);border-color:var(--acc)}
+.pkrow.on .pkc svg{stroke:#fff;fill:none;stroke-width:2.6;width:12px;height:12px}
+.pkrow:disabled .pkc{opacity:0}
+.enote{margin:0;padding:6px 9px;border-radius:8px;background:#FFF4FA;border:1px solid #F5C2DD;font-size:12.5px;color:#8A1F57}
