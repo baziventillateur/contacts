@@ -1,4 +1,5 @@
-/* Contacts · compléments v1.2.0 (compatible 1.3.0)
+/* Contacts · compléments v1.10.0
+   Notifications par événement (alerte téléphone, son, nuit), sur le modèle de l'admin Malino.
    Badges (Malino, PaceApp, Pro, Particulier), installation de l'appli, cloche de notifications et notifications push
    (même principe que CovoitGo), ajout de contacts par photo (lecture des e-mails dans le navigateur) et import Google Contacts. */
 (() => {
@@ -18,6 +19,21 @@
   .nitem{display:flex;gap:9px;padding:8px 2px;border-top:1px solid var(--line2);align-items:flex-start}.nitem:first-child{border-top:0}.nitem .e{font-size:17px;line-height:22px}
   .nitem .m{flex:1;min-width:0}.nitem b{display:block;font-size:13px}.nitem small{color:var(--mut2)}.nitem.new b::after{content:'';display:inline-block;width:7px;height:7px;border-radius:4px;background:#E5484D;margin-left:6px;vertical-align:1px}
   .pushrow{display:flex;gap:8px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+  .nev{border-top:1px solid var(--line2)}.nev:first-of-type{border-top:0}
+  .nevh{display:flex;align-items:center;gap:8px;padding:6px 0}.nevh .e{font-size:16px;width:22px;text-align:center;flex:none}
+  .nevt{flex:1;min-width:0;text-align:left;background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer;display:block}
+  .nevt b{display:block;font-size:13px;font-weight:600;line-height:1.25}.nevt span{display:block;font-size:11.5px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .nplay{width:28px;height:26px;border-radius:7px;border:1px solid var(--line);background:var(--panel);font-size:10.5px;color:var(--acc);flex:none;padding:0}
+  .nsw{width:34px;height:19px;appearance:none;-webkit-appearance:none;background:#D5D9E0;border-radius:10px;position:relative;cursor:pointer;transition:background .15s;flex:none;margin:0}
+  .nsw::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:8px;background:#fff;transition:left .15s;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+  .nsw:checked{background:var(--acc)}.nsw:checked::after{left:17px}
+  .ndesc{font-size:11.5px;color:var(--mut);padding:0 0 6px 30px;line-height:1.35}
+  .nsons{display:flex;flex-wrap:wrap;gap:4px;padding:0 0 9px 30px}
+  .nsons button{height:24px;padding:0 8px;border-radius:12px;border:1px solid var(--line);background:var(--panel);font-size:11.5px;display:inline-flex;align-items:center;gap:3px;color:var(--ink)}
+  .nsons button.on{background:var(--acc-bg);border-color:var(--acc-line);color:var(--acc);font-weight:600}
+  .nleg{font-size:11px;color:var(--mut2);padding:0 0 4px;line-height:1.35}
+  .nset details{border-top:1px solid var(--line2)}.nset summary{font-size:12px;color:var(--mut);cursor:pointer;padding:7px 0}
+  .nset details p{font-size:12px;color:var(--mut);margin:0 0 6px;line-height:1.45}.nset details a{color:var(--acc);text-decoration:none;white-space:nowrap}
   .instb{position:fixed;left:12px;right:12px;bottom:calc(70px + env(safe-area-inset-bottom));z-index:30;max-width:430px;margin:0 auto;background:#16181D;color:#fff;border-radius:14px;padding:10px 12px;display:flex;gap:10px;align-items:center;box-shadow:0 12px 30px rgba(0,0,0,.25)}
   .instb img{width:38px;height:38px;border-radius:10px;flex:none}.instb .m{flex:1;min-width:0;font-size:12.5px;line-height:1.35}.instb b{font-size:13.5px}
   .instb .btn{height:30px}.instb .btn.primary{background:#7A6BFF;border-color:#7A6BFF}.instb .x{background:transparent;border:0;color:#aaa;font-size:18px;padding:0 4px}
@@ -101,23 +117,102 @@
     const n = data?.non_lues || 0; b.textContent = n > 99 ? '99+' : n; b.classList.toggle('hidden', !n);
     if ('setAppBadge' in navigator) { try { n ? navigator.setAppBadge(n) : navigator.clearAppBadge(); } catch (e) { } }
   }
-  const NICO = { contact: '👤', import: '📥', test: '🔔', info: '🔔' };
+  const NICO = { contact: '👤', import: '📥', desinscription: '🚫', probleme: '⚠️', campagne: '📤', test: '🔔', info: '🔔' };
+  // événements importants : pour chacun, alerte sur le téléphone oui / non et son (même principe que l'admin Malino)
+  const NEV = [
+    ['contact', '👤', 'Nouveau contact', 'Ajouté à la main ou par photo.'],
+    ['import', '📥', 'Import terminé', 'Fin d’un import (Google Contacts, CSV, Excel, texte collé).'],
+    ['desinscription', '🚫', 'Désinscription', 'Quelqu’un ne veut plus recevoir tes mails (lien ou réponse STOP).'],
+    ['probleme', '⚠️', 'Problème d’envoi', 'Mail non délivré (adresse invalide) ou signalé comme spam.'],
+    ['campagne', '📤', 'Campagne envoyée', 'Mails envoyés ou programmés, à la main ou par une automatisation.'],
+    ['test', '🔔', 'Essai', 'Le bouton « Tester » en haut.']
+  ];
+  const NSONS = [['', '📱', 'Son du téléphone'], ['silence', '🔕', 'Silencieux'], ['one-up', '🍄', '1-UP'], ['secret-zelda', '🗝️', 'Secret Zelda'],
+    ['mario-mushroom', '⭐', 'Champignon'], ['wiii', '🎢', 'Wiiii'], ['yeet', '🚀', 'Yeet'], ['nom-nom-nom', '😋', 'Nom nom'], ['vine-boom', '💥', 'Vine boom'],
+    ['film', '🎬', 'Film'], ['chuiii', '😮', 'Chuiiii'], ['heehee', '🕺', 'Hee-hee'], ['combien', '💸', 'Combiennn'], ['bruh', '😑', 'Bruh'], ['oof', '😵', 'Oof'], ['bonk', '🔨', 'Bonk']];
+  const nomSon = k => { const x = NSONS.find(z => z[0] === (k || '')) || NSONS[0]; return x[1] + ' ' + x[2]; };
+  const NSon = {
+    a: {}, g: '', t: 0,
+    jouer(k, genre) { if (genre !== undefined) { this.g = genre; this.t = Date.now(); } if (!k || k === 'silence') return; try { const x = this.a[k] || (this.a[k] = new Audio('sons/' + k + '.mp3')); x.currentTime = 0; x.play().catch(() => { }); } catch (e) { } }
+  };
+  // appli ouverte à l'écran : le téléphone reste muet et c'est l'appli qui joue le son choisi
+  if ('serviceWorker' in navigator) navigator.serviceWorker.addEventListener('message', e => {
+    const d = e.data || {}; if (!d.contactsNotif) return;
+    if (!(d.genre && d.genre === NSon.g && Date.now() - NSon.t < 10000)) NSon.jouer(d.son); // pas deux fois le même son après un essai
+    bellCount(); if (openNotifs.reload) openNotifs.reload();
+  });
   async function openNotifs() {
     const d = drawer(`<div class="dhead"><button class="icon bare" id="dX" aria-label="Fermer">${ico('x')}</button><h2>Notifications</h2><button class="btn link" id="nRead">Tout lu</button></div>
       <div class="dbody"><div class="card"><h4>Sur ce téléphone</h4><div class="pushrow" id="pushRow"><span class="small mut">Chargement…</span></div></div>
-      <div class="card"><h4>Dernières notifications</h4><div id="nList"><p class="small mut">Chargement…</p></div></div></div>`);
-    $('#dX', d).onclick = closeDrawer;
-    drawPush();
-    const { data, error } = await sb.rpc('crm_notifs', { p_limite: 100 });
-    const L = $('#nList', d); if (!L) return;
-    if (error) { L.innerHTML = '<p class="small mut">Les notifications ne sont pas encore activées côté serveur.</p>'; return; }
-    const it = data.items || [];
+      <div class="card"><h4>Dernières notifications</h4><div id="nList"><p class="small mut">Chargement…</p></div></div>
+      <div class="card nset"><h4>Par événement</h4><div id="nPrefs"><p class="small mut">Chargement…</p></div></div></div>`);
+    $('#dX', d).onclick = () => { openNotifs.reload = null; closeDrawer(); };
+    drawPush(); drawPrefs($('#nPrefs', d));
+    const L = $('#nList', d); let it = [], all = false;
     const row = n => `<div class="nitem ${n.lu_le ? '' : 'new'}" ${n.contact_id ? `data-c="${n.contact_id}" style="cursor:pointer"` : ''}><span class="e">${NICO[n.genre] || '🔔'}</span><div class="m"><b>${esc(n.titre)}</b>${n.corps ? `<div class="small">${esc(n.corps)}</div>` : ''}<small>${ago(n.cree_le)}</small></div></div>`;
-    let all = false;
-    const draw = () => { L.innerHTML = it.length ? it.slice(0, all ? it.length : 8).map(row).join('') + (it.length > 8 ? `<button class="btn link" id="nMore">${all ? 'Réduire' : 'Tout voir (' + it.length + ')'}</button>` : '') : '<p class="small mut">Rien pour l’instant.</p>';
-      $$('[data-c]', L).forEach(e => e.onclick = () => openFiche(+e.dataset.c)); const m = $('#nMore', L); if (m) m.onclick = () => { all = !all; draw(); }; };
-    draw();
+    const draw = () => { L.innerHTML = it.length ? it.slice(0, all ? it.length : 5).map(row).join('') + (it.length > 5 ? `<button class="btn link" id="nMore">${all ? 'Réduire' : 'Tout voir (' + it.length + ')'}</button>` : '') : '<p class="small mut">Rien pour l’instant.</p>';
+      $$('[data-c]', L).forEach(e => e.onclick = () => { openNotifs.reload = null; openFiche(+e.dataset.c); }); const m = $('#nMore', L); if (m) m.onclick = () => { all = !all; draw(); }; };
+    const load = async () => {
+      if (!L.isConnected) { openNotifs.reload = null; return; }
+      const { data, error } = await sb.rpc('crm_notifs', { p_limite: 100 });
+      if (error) { L.innerHTML = '<p class="small mut">Les notifications ne sont pas encore activées côté serveur.</p>'; return; }
+      it = data.items || []; draw();
+    };
+    openNotifs.reload = load; load();
     $('#nRead', d).onclick = async () => { await sb.rpc('crm_notifs_lues', {}); it.forEach(n => n.lu_le = n.lu_le || new Date().toISOString()); draw(); bellCount(); };
+  }
+
+  /* ---------- réglages par événement : téléphone oui / non, son, nuit ---------- */
+  async function drawPrefs(box) {
+    if (!box) return;
+    const { data, error } = await sb.rpc('crm_notif_prefs');
+    if (error) { box.innerHTML = '<p class="small mut">Réglages indisponibles pour le moment.</p>'; return; }
+    let P = data || {}, ouvert = '';
+    const enreg = async (args, annuler) => {
+      const { data: r, error: e } = await sb.rpc('crm_notif_pref', Object.assign({ p_genre: null, p_push: null, p_son: null, p_nuit: null }, args));
+      if (e) { annuler(); toast(errMsg(e)); } else P = r || P;
+      draw();
+    };
+    const draw = () => {
+      box.innerHTML = `<p class="nleg">Touche un événement pour choisir son son. ▶ envoie un essai, l’interrupteur active l’alerte sur le téléphone (la liste garde tout).</p>`
+        + NEV.map(([k, ic, l, desc]) => {
+          const g = P[k] || {}, on = g.push !== false;
+          return `<div class="nev"><div class="nevh"><span class="e">${ic}</span>
+            <button class="nevt" data-k="${k}"><b>${l}</b><span>${on ? nomSon(g.son) : '📵 Seulement dans la liste'} ${ouvert === k ? '▴' : '▾'}</span></button>
+            <button class="nplay" data-t="${k}" aria-label="Essayer ${esc(l)}">▶</button>
+            <input type="checkbox" class="nsw" data-p="${k}" ${on ? 'checked' : ''} aria-label="Alerte sur le téléphone : ${esc(l)}"></div>
+            ${ouvert === k ? `<div class="ndesc">${desc}</div><div class="nsons">${NSONS.map(([sk, si, sl]) => `<button class="${(g.son || '') === sk ? 'on' : ''}" data-s="${k}|${sk}">${si} ${sl}</button>`).join('')}</div>` : ''}</div>`;
+        }).join('')
+        + `<div class="nev"><div class="nevh"><span class="e">🌙</span><div class="nevt"><b>Silencieux la nuit</b><span>De 22 h à 7 h, les alertes arrivent sans son</span></div>
+            <input type="checkbox" class="nsw" id="nNuit" ${P._nuit ? 'checked' : ''} aria-label="Silencieux la nuit"></div></div>
+          <details><summary>🔊 À savoir sur les sons</summary><p>Le son choisi joue quand Contacts est ouvert à l’écran. Appli fermée ou téléphone verrouillé : c’est le son de notification du téléphone qui joue (sauf 🔕 Silencieux, ou la nuit avec 🌙).</p>
+            <p>Pour qu’un de ces sons devienne le son des notifications Contacts sur Android, télécharge-le, puis fais un appui long sur une notification Contacts → ⚙️ → Son :<br>${NSONS.slice(2).map(([sk, si, sl]) => `<a href="sons/${sk}.mp3" download="contacts-${sk}.mp3">${si} ${sl}</a>`).join(' · ')}</p></details>`;
+      $$('[data-k]', box).forEach(b => b.onclick = () => { ouvert = ouvert === b.dataset.k ? '' : b.dataset.k; draw(); });
+      $$('[data-s]', box).forEach(b => b.onclick = () => {
+        const [k, sk] = b.dataset.s.split('|'), g = P[k] = Object.assign({}, P[k]), av = g.son;
+        g.son = sk; NSon.jouer(sk, k); draw(); enreg({ p_genre: k, p_son: sk }, () => { P[k].son = av; });
+      });
+      $$('[data-p]', box).forEach(c => c.onchange = () => {
+        const k = c.dataset.p, on = c.checked; P[k] = Object.assign({}, P[k], { push: on }); draw();
+        enreg({ p_genre: k, p_push: on }, () => { P[k].push = !on; });
+      });
+      const nu = $('#nNuit', box); if (nu) nu.onchange = () => { const on = nu.checked; P._nuit = on; enreg({ p_nuit: on }, () => { P._nuit = !on; }); };
+      $$('[data-t]', box).forEach(b => b.onclick = () => essai(b, b.dataset.t));
+    };
+    // essai : joue le son ici et envoie une vraie alerte de cet événement (marquée lue tout de suite)
+    const essai = async (b, k) => {
+      const g = P[k] || {}, ev = NEV.find(x => x[0] === k);
+      NSon.jouer(g.son, k); b.textContent = '…';
+      const { data: id, error: e } = await sb.rpc('crm_notifier', { p_titre: 'Essai · ' + ev[2], p_corps: 'Voici l’alerte « ' + ev[2] + ' » avec le son ' + nomSon(g.son) + '.', p_genre: k });
+      if (id) await sb.rpc('crm_notifs_lues', { p_ids: [id] });
+      b.textContent = e ? '✕' : '✓'; setTimeout(() => { b.textContent = '▶'; }, 2200);
+      if (e) return toast(errMsg(e));
+      if (g.push === false) toast('Alerte téléphone coupée pour cet événement : seulement le son ici');
+      else if (!(await pushOn().catch(() => false))) toast('Active les notifications sur ce téléphone pour recevoir l’alerte');
+      else toast('Essai envoyé');
+      if (openNotifs.reload) setTimeout(openNotifs.reload, 1200);
+    };
+    draw();
   }
 
   /* ---------- notifications push (comme CovoitGo) ---------- */
