@@ -1,5 +1,5 @@
 /* Contacts — appli de contacts centralisés (Supabase, espace crm du projet Malino) */
-const APP_VERSION = '1.12.0';
+const APP_VERSION = '1.12.1';
 const SHEET_URL = 'https://claude.ai/artifact/8CDf2v6LQcaRbUFmUVi4St'; // copie « Prospects PaceApp » (la base Contacts reste la référence)
 const SB_URL = 'https://fcfkfuqzgsmckkxqfwuo.supabase.co';
 const SB_KEY = 'sb_publishable_a3SNrQOSCH20T5sKsJxuAA_s7H4yCSR';
@@ -1447,7 +1447,7 @@ const MARQUES = {
   malino: { nom: 'Malino', court: 'Malino', couleur: '#7B5CFF', exp: 'malino@paceapp.fr' },
   'vacances-muslims': { nom: 'Vacances Muslims', court: 'Vacances Muslims', couleur: '#0E6A6A', exp: 'inscription@vacancesmuslims.fr' }
 };
-const lienUrl = l => new URL('inscription.html', location.href).href.split('?')[0] + '?l=' + l.code;
+const lienUrl = l => (/(paceapp\.fr|github\.io)$/.test(location.hostname) ? 'https://contacts.paceapp.fr/inscription' : new URL('inscription.html', location.href).href.split('?')[0]) + '?l=' + l.code;
 async function copier(txt) {
   try { await navigator.clipboard.writeText(txt); toast('Lien copié'); }
   catch (e) { prompt('Copiez le lien :', txt); }
