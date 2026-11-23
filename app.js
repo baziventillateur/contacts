@@ -1,5 +1,5 @@
 /* Contacts — appli de contacts centralisés (Supabase, espace crm du projet Malino) */
-const APP_VERSION = '1.10.2';
+const APP_VERSION = '1.11.0';
 const SB_URL = 'https://fcfkfuqzgsmckkxqfwuo.supabase.co';
 const SB_KEY = 'sb_publishable_a3SNrQOSCH20T5sKsJxuAA_s7H4yCSR';
 const sb = supabase.createClient(SB_URL, SB_KEY, {
@@ -356,6 +356,7 @@ function renderSide() {
     <div class="shead">Espaces</div>
     <button class="sbtn ${S.page === 'contacts' ? 'on' : ''}" id="sPContacts">${ico('users')}Contacts<span class="n">${S.stats ? fmtN(S.stats.total) : ''}</span></button>
     <button class="sbtn ${S.page === 'campagnes' ? 'on' : ''}" id="sPCamp">${ico('send')}Campagnes<span class="n">${S.camps ? fmtN(S.camps.total_envois) : ''}</span></button>
+    <button class="sbtn" id="sEnv">${ico('mail')}Envoyés</button>
     <div class="shead">Favoris</div>
     ${favs.length ? favs.map(r => `<button class="sbtn" data-fav="${r.id}"><span class="av" style="width:18px;height:18px;font-size:9px;background:${avColor(r.id)}">${esc(initials(r))}</span>${esc(fullName(r))}</button>`).join('')
       : '<p class="small mut" style="padding:0 8px;margin:2px 0">Touche l’étoile d’un contact pour l’ajouter ici.</p>'}
@@ -373,6 +374,7 @@ function renderSide() {
   $('#sOut').onclick = logout;
   $('#sPContacts').onclick = () => { toggleSide(false); showPage('contacts'); };
   $('#sPCamp').onclick = () => { toggleSide(false); showPage('campagnes'); };
+  $('#sEnv').onclick = () => { toggleSide(false); openEnvoyes(); };
   $$('[data-fav]', s).forEach(b => b.onclick = () => { toggleSide(false); openFiche(+b.dataset.fav); });
   $$('[data-vue]', s).forEach(b => b.onclick = e => {
     if (e.target.closest('[data-delvue]')) return;
@@ -1075,6 +1077,8 @@ async function renderCampagnes(force) {
       <i class="c0" style="width:${pct(cov.jamais)}%"></i><i class="c1" style="width:${pct(cov.une)}%"></i><i class="c2" style="width:${pct(cov.plusieurs)}%"></i>
     </div>
     <div class="leg small mut"><span><i class="c0"></i>Jamais contactés ${pct(cov.jamais)} %</span><span><i class="c1"></i>1 campagne ${pct(cov.une)} %</span><span><i class="c2"></i>2 ou plus ${pct(cov.plusieurs)} %</span></div>
+    <section class="csec"><h3>Derniers envois <span class="small mut">tout ce qui est parti, campagne ou pas</span></h3>
+      <div id="cEnv"><p class="small mut">Chargement…</p></div><button class="btn link small" id="cEnvAll">Tout voir</button></section>
     <section class="csec"><h3>Frise des envois <span class="small mut">par semaine · touche une bulle pour voir les destinataires</span></h3>
       <div class="fwrap">${friseHtml}</div>
       <div class="leg small mut"><span><i class="bubl"></i>envoyés</span><span><i class="bubl bprog"></i>programmés</span><span>${esc(sync)}</span></div></section>
@@ -1083,6 +1087,7 @@ async function renderCampagnes(force) {
       <div class="cgrid">${camps.slice().sort((a, b) => ((b.nb + b.programmes) > 0) - ((a.nb + a.programmes) > 0) || String(b.dernier || '').localeCompare(String(a.dernier || ''))).map(card).join('')}</div></section>
   </div>`;
   drawJours($('#cJours', P), K);
+  envRecents($('#cEnv', P)); $('#cEnvAll', P).onclick = () => openEnvoyes();
   $$('[data-go]', P).forEach(b => b.onclick = () => { const g = b.dataset.go; goContacts(g === 'all' ? { joignables: true } : { nb_campagnes: g, joignables: true }); });
   $$('[data-camp]', P).forEach(b => b.onclick = () => openCampagne(b.dataset.camp));
   $$('[data-recue]', P).forEach(b => b.onclick = () => goContacts({ campagne_recue: b.dataset.recue }));
@@ -1227,9 +1232,9 @@ async function openApercu(q) {
   let r;
   try {
     const { data: { session } } = await sb.auth.getSession();
-    const res = await fetch(SB_URL + '/functions/v1/crm-campagnes', { method: 'POST',
+    const res = await fetch(SB_URL + '/functions/v1/' + (q.resend_id ? 'crm-envoyes' : 'crm-campagnes'), { method: 'POST',
       headers: { 'Content-Type': 'application/json', apikey: SB_KEY, Authorization: 'Bearer ' + (session ? session.access_token : SB_KEY) },
-      body: JSON.stringify(Object.assign({ action: 'apercu' }, q)) });
+      body: JSON.stringify(q.resend_id ? { action: 'mail', id: q.resend_id } : Object.assign({ action: 'apercu' }, q)) });
     r = await res.json();
     if (!res.ok || r.erreur) throw new Error(r.erreur || res.status);
   } catch (e) { $('#mSuj', w).textContent = 'Aperçu indisponible'; $('#mBody', w).innerHTML = `<p class="empty">${esc(errMsg(e))}</p>`; return; }
@@ -1250,6 +1255,60 @@ async function openApercu(q) {
   } else {
     B.innerHTML = `<div class="mnone">${ico('mail')}<p>${esc(r.message || 'Contenu non disponible.')}</p></div>`;
   }
+}
+/* ---------- boîte d'envoi : tous les mails partis du compte, du plus récent au plus ancien ---------- */
+async function envoyesFetch(after) {
+  const { data: { session } } = await sb.auth.getSession();
+  const res = await fetch(SB_URL + '/functions/v1/crm-envoyes', { method: 'POST',
+    headers: { 'Content-Type': 'application/json', apikey: SB_KEY, Authorization: 'Bearer ' + (session ? session.access_token : SB_KEY) },
+    body: JSON.stringify({ action: 'liste', limit: 40, after: after || '' }) });
+  const r = await res.json().catch(() => ({}));
+  if (!res.ok || r.erreur) throw new Error(r.erreur || res.status);
+  return r;
+}
+const ENV_ST = { delivered: ['Délivré', 't-ok'], opened: ['Ouvert', 't-ok'], clicked: ['Cliqué', 't-ok'], sent: ['Envoyé', 't-acc'], queued: ['En file', 't-acc'],
+  scheduled: ['Programmé', 't-pur'], canceled: ['Annulé', 't-gray'], bounced: ['Rebond', 't-bad'], complained: ['Spam', 't-bad'], delivery_delayed: ['Retardé', 't-warn'], failed: ['Échec', 't-bad'] };
+function envRow(m) {
+  const [l, t] = ENV_ST[m.statut] || [m.statut || '—', 't-gray'];
+  const nom = m.contact ? fullName(m.contact) : '';
+  const quand = m.statut === 'scheduled' && m.prog ? m.prog : m.le;
+  const d = new Date(quand), auj = new Date().toDateString() === d.toDateString();
+  const h = auj ? d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
+  return `<button class="erow envr" data-rid="${esc(m.id)}">${m.campagne ? campDot(m.campagne.couleur) : '<i class="cdot" style="background:#C7CCD8"></i>'}
+    <span class="txt"><span class="nm">${esc(nom || m.a)}${m.nb > 1 ? ` <span class="mut">+${m.nb - 1}</span>` : ''}</span>
+    <span class="sub">${esc(m.sujet || '(sans objet)')}</span>
+    <span class="sub">${m.campagne ? esc(campShort(m.campagne.nom)) : 'Hors campagne'}${nom ? ' · ' + esc(m.a) : ''}</span></span>
+    <span class="envm"><span class="small mut">${esc(h)}</span><span class="chip ${t}">${esc(l)}</span></span></button>`;
+}
+function envBind(box) { $$('[data-rid]', box).forEach(b => b.onclick = () => openApercu({ resend_id: b.dataset.rid })); }
+async function envRecents(box) {
+  if (!box) return;
+  try { const r = await envoyesFetch(); box.innerHTML = (r.items || []).slice(0, 5).map(envRow).join('') || '<p class="small mut">Aucun envoi.</p>'; envBind(box); }
+  catch (e) { box.innerHTML = `<p class="small mut">${esc(errMsg(e))}</p>`; }
+}
+async function openEnvoyes() {
+  const d = drawer(`<div class="dhead"><button class="icon bare" id="dX" aria-label="Fermer">${ico('back')}</button><h2>Envoyés</h2></div>
+    <div class="dbody"><div class="seg envf" id="eF">
+      <button class="on" data-f="tous">Tous</button><button data-f="hors">Hors campagne</button><button data-f="camp">Campagnes</button><button data-f="pb">Problèmes</button></div>
+      <p class="small mut" style="margin:0">Tous les mails partis du compte, du plus récent au plus ancien. Touche un mail pour le lire.</p>
+      <div id="eL"><p class="small mut">Chargement…</p></div><button class="btn" id="eMore" hidden>Charger plus</button></div>`);
+  $('#dX', d).onclick = closeDrawer;
+  let items = [], after = null, more = false, f = 'tous';
+  const L = $('#eL', d), M = $('#eMore', d);
+  const ok = m => f === 'tous' || (f === 'hors' && !m.campagne) || (f === 'camp' && !!m.campagne) || (f === 'pb' && /bounced|complained|failed|delivery_delayed/.test(m.statut || ''));
+  const draw = () => {
+    const v = items.filter(ok);
+    L.innerHTML = v.length ? v.map(envRow).join('') : `<p class="small mut">${more ? 'Rien dans les derniers mails chargés : touche « Charger plus ».' : 'Aucun mail.'}</p>`;
+    envBind(L); M.hidden = !more;
+  };
+  const load = async () => {
+    M.disabled = true; M.textContent = 'Chargement…';
+    try { const r = await envoyesFetch(after); items = items.concat(r.items || []); after = r.after; more = !!r.has_more; draw(); }
+    catch (e) { L.insertAdjacentHTML('beforeend', `<p class="small mut">${esc(errMsg(e))}</p>`); }
+    M.disabled = false; M.textContent = 'Charger plus';
+  };
+  $$('[data-f]', d).forEach(b => b.onclick = () => { f = b.dataset.f; $$('[data-f]', d).forEach(x => x.classList.toggle('on', x === b)); draw(); });
+  M.onclick = load; load();
 }
 function closeApercu() { const w = $('#mveil'); if (w) w.remove(); }
 

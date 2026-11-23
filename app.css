@@ -434,3 +434,10 @@ input.need{border-color:#E8B54A !important;background:#FFFBEF}
 .xexp{height:32px;padding:0 6px;border:0;background:none;color:var(--mut);font-size:12.5px;font-weight:500;display:inline-flex;align-items:center;gap:5px;border-radius:7px;cursor:pointer}
 .xexp svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .xexp:hover{background:var(--line2);color:var(--ink)}
+/* v1.11.0 : boîte d'envoi */
+.envr{align-items:flex-start;padding:6px 0}.envr .cdot{margin-top:5px;flex:none}
+.envm{display:flex;flex-direction:column;align-items:flex-end;gap:3px;flex:none;padding-left:4px}
+.envm .chip{height:18px;font-size:10.5px;padding:0 6px}
+.envf{display:flex;gap:4px;flex-wrap:wrap;margin:0 0 6px}.envf button{height:26px;padding:0 10px;border-radius:13px;border:1px solid var(--line);background:var(--panel);font-size:12px}
+.envf button.on{background:var(--acc-bg);border-color:var(--acc-line);color:var(--acc);font-weight:600}
+#eMore{align-self:center;margin-top:6px}
