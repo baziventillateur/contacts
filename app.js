@@ -1,5 +1,5 @@
 /* Contacts — appli de contacts centralisés (Supabase, espace crm du projet Malino) */
-const APP_VERSION = '1.10.0';
+const APP_VERSION = '1.10.1';
 const SB_URL = 'https://fcfkfuqzgsmckkxqfwuo.supabase.co';
 const SB_KEY = 'sb_publishable_a3SNrQOSCH20T5sKsJxuAA_s7H4yCSR';
 const sb = supabase.createClient(SB_URL, SB_KEY, {
@@ -254,7 +254,7 @@ function shell() {
           <div class="seg only-d" role="group" aria-label="Affichage">
             <button data-mode="table">${ico('table')}Tableau</button><button data-mode="liste">${ico('list')}Liste</button>
           </div>
-          <button class="btn" id="expBtn" aria-label="Exporter en CSV">${ico('down')}<span class="only-d">Exporter</span></button>
+          <button class="btn only-d" id="expBtn" aria-label="Exporter en CSV">${ico('down')}Exporter</button>
           <button class="btn primary only-d" id="newBtn">${ico('plus')}Nouveau</button>
         </div>
         <div class="top-actions hidden" id="topK">
@@ -365,12 +365,14 @@ function renderSide() {
     ${S.vues.length ? `<div class="shead">Mes vues</div>` + S.vues.map(v => `<button class="sbtn ${S.vue === 'v' + v.id ? 'on' : ''}" data-vue="v${v.id}">${ico('eye')}${esc(v.nom)}<span class="x" data-delvue="${v.id}" role="button" aria-label="Supprimer la vue ${esc(v.nom)}">✕</span></button>`).join('') : ''}
     <div class="sfoot">
       <span class="small mut" style="overflow:hidden;text-overflow:ellipsis">${esc(S.user?.email || '')}</span>
+      <button class="sbtn" id="sExp">${ico('down')}Exporter en CSV</button>
       <button class="sbtn" id="sOut">${ico('out')}Se déconnecter</button>
       <span class="small mut">Contacts v${APP_VERSION}</span>
     </div>`;
   $('#sSearch').onclick = () => { toggleSide(false); $('#q').focus(); };
   $('#sNew').onclick = () => { toggleSide(false); openForm(null); };
   $('#sOut').onclick = logout;
+  $('#sExp').onclick = () => { toggleSide(false); exportCsv(); };
   $('#sPContacts').onclick = () => { toggleSide(false); showPage('contacts'); };
   $('#sPCamp').onclick = () => { toggleSide(false); showPage('campagnes'); };
   $$('[data-fav]', s).forEach(b => b.onclick = () => { toggleSide(false); openFiche(+b.dataset.fav); });
@@ -632,7 +634,7 @@ function renderBulk() {
   const bs = $('#bSend'); if (bs) bs.onclick = () => openEnvoi(S.f.campagne_non_recue, ids());
   $('#bFav').onclick = () => run('favori', 'true', 'Ajouté aux favoris');
   $('#bExc').onclick = () => run('exclure', 'exclu à la main', 'Exclus des envois');
-  $('#bExp').onclick = () => downloadCsv(S.rows.filter(r => S.sel.has(r.id)), 'selection');
+  $('#bExp').onclick = () => confirmExport(n, 'la sélection', () => downloadCsv(S.rows.filter(r => S.sel.has(r.id)), 'selection'));
   $('#bDel').onclick = async () => {
     if (!confirm(`Supprimer définitivement ${n} contact${n > 1 ? 's' : ''} ?`)) return;
     try { const k = await rpc('crm_supprimer', { p_ids: ids() }); toast(`${k} supprimé${k > 1 ? 's' : ''}`); await refreshMeta(); load(true); } catch (e) { toast(errMsg(e)); }
@@ -642,11 +644,36 @@ function renderBulk() {
 
 /* ---------- export CSV ---------- */
 async function exportCsv() {
-  try {
-    toast('Préparation de l’export…');
-    const d = await rpc('crm_liste', { p: Object.assign({}, S.f, { limit: 5000, offset: 0 }) });
-    downloadCsv(d.rows || [], 'contacts');
-  } catch (e) { toast(errMsg(e)); }
+  const vue = ($('#vTitle')?.textContent || 'vue actuelle').trim();
+  confirmExport(Math.min(S.total || 0, 5000), 'vue « ' + vue + ' »' + (S.total > 5000 ? ', les 5 000 premiers' : ''), async () => {
+    try {
+      toast('Préparation de l’export…');
+      const d = await rpc('crm_liste', { p: Object.assign({}, S.f, { limit: 5000, offset: 0 }) });
+      downloadCsv(d.rows || [], 'contacts');
+    } catch (e) { toast(errMsg(e)); }
+  });
+}
+/* confirmation lente avant tout export : avertissement, case à cocher, 5 s d'attente,
+   puis un seul export toutes les 10 minutes sur cet appareil (évite les exports en double ou par erreur) */
+const EXP_K = 'contacts-dernier-export', EXP_PAUSE = 10 * 60e3, EXP_ATTENTE = 5;
+function confirmExport(n, quoi, go) {
+  let last = 0; try { last = +localStorage.getItem(EXP_K) || 0; } catch (e) { }
+  const reste = last + EXP_PAUSE - Date.now();
+  if (reste > 0) {
+    const w = dialog('Export en pause', `<div class="xwarn">⏳ Un export a déjà été fait sur cet appareil ${(Date.now() - last) < 6e4 ? 'à l’instant' : 'il y a ' + Math.round((Date.now() - last) / 6e4) + ' min'}.</div>
+      <p class="small mut" style="margin:0 0 8px">Pour éviter les exports en double ou par erreur, le prochain sera possible dans <b>${Math.ceil(reste / 6e4)} min</b>.</p>
+      <div class="mact"><button class="btn primary" id="xOk">Compris</button></div>`);
+    $('#xOk', w).onclick = closeApercu; return;
+  }
+  const w = dialog('Exporter des contacts ?', `<div class="xwarn">⚠️ Attention : tu vas télécharger un fichier avec <b>${fmtN(n)} contact${n > 1 ? 's' : ''}</b> (${esc(quoi)}) : noms, e-mails et téléphones.</div>
+    <p class="small mut" style="margin:0 0 8px">Le fichier reste sur cet appareil, en dehors de l’appli. Ne le partage pas et supprime-le quand tu n’en as plus besoin. Un seul export possible toutes les 10 minutes.</p>
+    <label class="xchk"><input type="checkbox" id="xC"> Oui, je veux vraiment exporter ces contacts</label>
+    <div class="mact"><button class="btn" id="xNo">Annuler</button><button class="btn primary" id="xGo" disabled>Patiente ${EXP_ATTENTE} s…</button></div>`);
+  const b = $('#xGo', w), c = $('#xC', w); let t = EXP_ATTENTE;
+  const maj = () => { b.disabled = t > 0 || !c.checked; b.textContent = t > 0 ? `Patiente ${t} s…` : c.checked ? `Exporter ${fmtN(n)} contact${n > 1 ? 's' : ''}` : 'Coche la case pour confirmer'; };
+  const tick = setInterval(() => { if (!w.isConnected) return clearInterval(tick); t--; maj(); if (t <= 0) clearInterval(tick); }, 1000);
+  c.onchange = maj; $('#xNo', w).onclick = closeApercu;
+  b.onclick = () => { if (b.disabled) return; clearInterval(tick); try { localStorage.setItem(EXP_K, Date.now()); } catch (e) { } closeApercu(); go(); };
 }
 function downloadCsv(rows, base) {
   const cols = [['prenom', 'Prénom'], ['nom', 'Nom'], ['email', 'E-mail'], ['telephone', 'Téléphone'], ['entreprise', 'Entreprise'], ['metier', 'Métier'],
