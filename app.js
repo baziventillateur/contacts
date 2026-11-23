@@ -1,5 +1,5 @@
 /* Contacts — appli de contacts centralisés (Supabase, espace crm du projet Malino) */
-const APP_VERSION = '1.13.0';
+const APP_VERSION = '1.14.0';
 const SHEET_URL = 'https://claude.ai/artifact/8CDf2v6LQcaRbUFmUVi4St'; // copie « Prospects PaceApp » (la base Contacts reste la référence)
 const SB_URL = 'https://fcfkfuqzgsmckkxqfwuo.supabase.co';
 const SB_KEY = 'sb_publishable_a3SNrQOSCH20T5sKsJxuAA_s7H4yCSR';
@@ -41,6 +41,7 @@ const I = {
   down: '<path d="M12 3v12M7 10l5 5 5-5M5 21h14"/>',
   plus: '<path d="M12 5v14M5 12h14"/>',
   check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  right: '<path d="M9 6l6 6-6 6"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
   back: '<path d="M15 5l-7 7 7 7"/>',
   menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
@@ -1107,10 +1108,12 @@ async function renderCampagnes(force) {
       <div class="leg small mut"><span><i class="bubl"></i>envoyés</span><span><i class="bubl bprog"></i>programmés</span><span>${esc(sync)}</span></div></section>
     <section class="csec"><h3>À surveiller</h3>${alertes}</section>
     <section class="csec"><h3>Campagnes <span class="small mut">${actives.length} envoyée${actives.length > 1 ? 's' : ''} · touche la pastille pour changer la couleur</span></h3>
+      <button class="btn small cnew" id="cNew">${ico('plus')}Nouvelle campagne</button>
       <div class="cgrid">${camps.slice().sort((a, b) => ((b.nb + b.programmes) > 0) - ((a.nb + a.programmes) > 0) || String(b.dernier || '').localeCompare(String(a.dernier || ''))).map(card).join('')}</div></section>
   </div>`;
   drawJours($('#cJours', P), K);
   envRecents($('#cEnv', P)); $('#cEnvAll', P).onclick = () => openEnvoyes();
+  $('#cNew', P).onclick = openNouvelleCampagne;
   $$('[data-go]', P).forEach(b => b.onclick = () => { const g = b.dataset.go; goContacts(g === 'all' ? { joignables: true } : { nb_campagnes: g, joignables: true }); });
   $$('[data-camp]', P).forEach(b => b.onclick = () => openCampagne(b.dataset.camp));
   $$('[data-recue]', P).forEach(b => b.onclick = () => goContacts({ campagne_recue: b.dataset.recue }));
@@ -1223,6 +1226,7 @@ async function openCampagne(slug) {
   let r;
   try { r = await rpc('crm_campagne_detail', { p_slug: slug }); } catch (e) { $('.dbody', d).innerHTML = `<p class="empty">${esc(errMsg(e))}</p>`; return; }
   const c = r.campagne || {}; const env = r.envois || [];
+  const dep = env.filter(x => !x.seq_jour); // les relances de la séquence sont comptées à part
   const stLab = s => ({ delivered: ['Délivré', 't-ok'], opened: ['Ouvert', 't-ok'], clicked: ['Cliqué', 't-ok'], sent: ['Envoyé', 't-acc'], scheduled: ['Programmé', 't-pur'], bounced: ['Rebond', 't-bad'], complained: ['Signalé spam', 't-bad'] }[s] || [s || '—', 't-gray']);
   const item = x => { const [l, t] = stLab(x.statut); return `<button class="erow" data-pid="${x.prospect_id || ''}"><span class="av" style="background:${avColor(x.prospect_id)}">${esc(initials(x))}</span><span class="txt"><span class="nm">${esc([x.prenom, x.nom].filter(Boolean).join(' ') || x.email)}</span><span class="sub">${esc(x.entreprise || x.email)}</span></span><span class="small mut">${esc(dm(x.envoye_le))}</span><span class="chip ${t}">${esc(l)}</span></button>`; };
   d.innerHTML = `<div class="dhead"><button class="icon bare" id="dX" aria-label="Fermer">${ico('back')}</button><h2>${esc(campShort(c.nom))}</h2></div>
@@ -1230,7 +1234,8 @@ async function openCampagne(slug) {
       <div class="hero">${campDot(c.couleur, true)}<div><h3 style="font-size:16px">${esc(c.nom)}</h3><div class="small mut">${esc(c.description || '')}</div></div></div>
       <div class="cbtns"><button class="btn" id="cMail">${ico('eye')}Voir le mail envoyé</button><button class="btn" id="cAdd" hidden>${ico('plus')}Ajouter des contacts</button></div>
       <div class="cnums box"><div><b>${fmtN(env.length)}</b><span>envois</span></div><div><b>${fmtN(env.filter(x => x.statut === 'scheduled').length)}</b><span>programmés</span></div><div><b>${fmtN(env.filter(x => /bounced|complained/.test(x.statut || '')).length)}</b><span>rebonds</span></div><div><b>${fmtN(r.non_recus)}</b><span>pas reçu</span></div></div>
-      <div class="card"><h4>Destinataires</h4>${env.length ? shortList(env, 8, item, 'mEnv') : '<p class="small mut">Personne pour l’instant.</p>'}</div>
+      <div class="card seqc" id="cSeq"><h4>Séquence de relances</h4><p class="small mut">Chargement…</p></div>
+      <div class="card"><h4>Destinataires</h4>${dep.length ? shortList(dep, 8, item, 'mEnv') : '<p class="small mut">Personne pour l’instant.</p>'}</div>
     </div>
     <div class="dfoot"><button class="btn" id="cNon">Voir ceux qui ne l’ont pas reçue</button>${env.length ? '<button class="btn primary" id="cOui">Voir dans Contacts</button>' : ''}</div>`;
   $('#dX', d).onclick = closeDrawer;
@@ -1238,6 +1243,7 @@ async function openCampagne(slug) {
   $$('[data-more]', d).forEach(b => b.onclick = () => { $('#' + b.dataset.more).classList.remove('hidden'); b.remove(); });
   $('#cMail', d).onclick = () => openApercu({ campagne: slug });
   persoCamps().then(() => { const a = $('#cAdd', d); if (a && envoyable(slug)) { a.hidden = false; a.onclick = () => openChoixContacts(slug, env); } });
+  seqCard(d, slug);
   $('#cNon', d).onclick = () => { closeDrawer(); goContacts({ campagne_non_recue: slug, joignables: true }); };
   const oui = $('#cOui', d); if (oui) oui.onclick = () => { closeDrawer(); goContacts({ campagne_recue: slug }); };
 }
@@ -1370,38 +1376,42 @@ function openTagLot(idsSel) {
 const ENVOYABLES = ['malino-arabe-2311', 'malino-eiffage', 'malino-familles-btp', 'paceapp-guide-ctx'];
 /* campagnes « mail perso » (mail rédigé à part, ex. cadeaux Malino avec un code par personne) : envoyées par crm-perso */
 const isPerso = slug => !!(S.perso || []).find(x => x.slug === slug);
-const envoyable = slug => ENVOYABLES.includes(slug) || isPerso(slug);
-let persoP = null;
-function persoCamps() {
-  if (!persoP) persoP = (async () => {
-    const { data: { session } } = await sb.auth.getSession();
-    const res = await fetch(SB_URL + '/functions/v1/crm-perso', { method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: SB_KEY, Authorization: 'Bearer ' + (session ? session.access_token : SB_KEY) },
-      body: JSON.stringify({ action: 'campagnes' }) });
-    const r = await res.json().catch(() => ({}));
-    if (!res.ok || r.erreur) throw new Error(r.erreur || res.status);
-    S.perso = r.campagnes || [];
-    if (S.page === 'contacts' && S.f && isPerso(S.f.campagne_non_recue)) { renderChips(); renderBulk(); }
-    return S.perso;
-  })().catch(e => { persoP = null; S.perso = S.perso || []; return S.perso; });
-  return persoP;
-}
-const sendable = () => S.page === 'contacts' && envoyable(S.f.campagne_non_recue);
-async function fnCamp(body) {
+/* campagnes dont le mail de départ (J+0) est écrit dans l'appli : envoyées par crm-sequences */
+const isSeqDep = slug => !!(S.seqs || []).find(x => x.slug === slug && x.depart);
+const envoyable = slug => ENVOYABLES.includes(slug) || isPerso(slug) || isSeqDep(slug);
+async function fnCall(fn, body) {
   const { data: { session } } = await sb.auth.getSession();
-  const res = await fetch(SB_URL + '/functions/v1/' + (isPerso(body.campagne) ? 'crm-perso' : 'crm-campagnes'), { method: 'POST',
+  const res = await fetch(SB_URL + '/functions/v1/' + fn, { method: 'POST',
     headers: { 'Content-Type': 'application/json', apikey: SB_KEY, Authorization: 'Bearer ' + (session ? session.access_token : SB_KEY) },
     body: JSON.stringify(body) });
   const r = await res.json().catch(() => ({}));
   if (!res.ok || r.erreur) throw new Error(r.erreur || ('Erreur ' + res.status));
   return r;
 }
+let persoP = null;
+function persoCamps(frais) {
+  if (frais) persoP = null;
+  if (!persoP) persoP = (async () => {
+    const [p, q] = await Promise.all([fnCall('crm-perso', { action: 'campagnes' }), fnCall('crm-sequences', { action: 'campagnes' }).catch(() => ({ campagnes: S.seqs || [] }))]);
+    S.perso = p.campagnes || []; S.seqs = q.campagnes || [];
+    if (S.page === 'contacts' && S.f && envoyable(S.f.campagne_non_recue)) { renderChips(); renderBulk(); }
+    return S.perso;
+  })().catch(e => { persoP = null; S.perso = S.perso || []; S.seqs = S.seqs || []; return S.perso; });
+  return persoP;
+}
+const sendable = () => S.page === 'contacts' && envoyable(S.f.campagne_non_recue);
+const fnDe = slug => isPerso(slug) ? 'crm-perso' : isSeqDep(slug) ? 'crm-sequences' : 'crm-campagnes';
+const fnCamp = body => fnCall(fnDe(body.campagne), body);
 const MOTIFS = { deja: 'l’ont déjà reçue', recent: 'ont reçu un autre mail il y a moins de 7 jours', exclu: 'sont exclus des envois', stop: 'ont répondu STOP',
   sans_email: 'n’ont pas d’e-mail valable', entreprise: 'ne sont pas d’une entreprise prévue pour ce mail', doublon: 'sont en double' };
 async function openEnvoi(slug, idsSel, onDone) {
   const nom = campShort(campName(slug));
   const w = dialog(`Envoyer « ${nom} »`, `<div id="eCorps"><div class="mload" style="position:static;padding:30px 0"><span class="ldots"><i></i><i></i><i></i></span></div></div>`);
-  let ecart = true, r = null;
+  let ecart = true, r = null, prog = false;
+  const pad = n => String(n).padStart(2, '0');
+  const loc = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const demain9 = () => { const d = new Date(); d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); return loc(d); };
+  let dt = demain9();
   const draw = () => {
     const ok = r.ok.length, ex = Object.entries(r.ecartes).filter(([, v]) => v);
     $('#eCorps', w).innerHTML = `<div class="ebig ${ok ? '' : 'none'}"><b>${fmtN(ok)}</b><span>personne${ok > 1 ? 's' : ''} ${ok > 1 ? 'vont' : 'va'} recevoir ce mail</span></div>
@@ -1409,9 +1419,13 @@ async function openEnvoi(slug, idsSel, onDone) {
       ${ex.length ? `<ul class="eex">${ex.map(([k, v]) => `<li><b>${fmtN(v)}</b> écartée${v > 1 ? 's' : ''} : ${esc(MOTIFS[k] || k)}</li>`).join('')}</ul>` : ''}
       ${r.demandes >= 300 ? '<p class="small mut">300 contacts au maximum par envoi : relance l’envoi pour les suivants.</p>' : ''}
       <label class="echk"><input type="checkbox" id="eEc" ${ecart ? 'checked' : ''}> Laisser au moins 7 jours après un autre mail (conseillé)</label>
+      <div class="eqd"><div class="seg"><button type="button" data-q="0" class="${prog ? '' : 'on'}">Maintenant</button><button type="button" data-q="1" class="${prog ? 'on' : ''}">Programmer</button></div>
+        <input type="datetime-local" id="eDt" value="${esc(dt)}" min="${esc(loc(new Date(Date.now() + 5 * 6e4)))}" max="${esc(loc(new Date(Date.now() + 29 * 864e5)))}" ${prog ? '' : 'hidden'}></div>
       ${r.apercu ? `<button class="btn link small" id="eVoir" style="padding:0">${ico('eye')}Voir le mail (exemple : ${esc(r.apercu.email)})</button><div id="eFr" class="efr hidden"></div>` : ''}
-      <div class="mact"><button class="btn" id="eCancel">Annuler</button><button class="btn primary" id="eGo" ${ok ? '' : 'disabled'}>${ok ? `Envoyer à ${fmtN(ok)} personne${ok > 1 ? 's' : ''}` : 'Personne à qui envoyer'}</button></div>`;
+      <div class="mact"><button class="btn" id="eCancel">Annuler</button><button class="btn primary" id="eGo" ${ok ? '' : 'disabled'}>${ok ? `${prog ? 'Programmer pour' : 'Envoyer à'} ${fmtN(ok)} personne${ok > 1 ? 's' : ''}` : 'Personne à qui envoyer'}</button></div>`;
     $('#eCancel', w).onclick = closeApercu;
+    $$('[data-q]', w).forEach(b => b.onclick = () => { prog = b.dataset.q === '1'; draw(); });
+    $('#eDt', w).onchange = e => { dt = e.target.value || dt; };
     $('#eEc', w).onchange = e => { ecart = e.target.checked; prep(); };
     const v = $('#eVoir', w);
     if (v) v.onclick = () => {
@@ -1421,9 +1435,17 @@ async function openEnvoi(slug, idsSel, onDone) {
     $('#eGo', w).onclick = async () => {
       const g = $('#eGo', w); g.disabled = true; g.textContent = 'Envoi en cours…'; $('#eCancel', w).disabled = true;
       try {
-        const x = await fnCamp({ action: 'ajouter', campagne: slug, ids: idsSel, ecart7: ecart, confirme: true });
+        let quand = null;
+        if (prog) {
+          const t = new Date(dt);
+          if (isNaN(t) || t.getTime() < Date.now() + 2 * 6e4) throw new Error('Choisis une date et une heure à venir.');
+          quand = t.toISOString();
+        }
+        const x = await fnCamp(Object.assign({ action: 'ajouter', campagne: slug, ids: idsSel, ecart7: ecart, confirme: true }, quand ? { scheduled_at: quand } : {}));
+        if (x.erreurs && x.erreurs.length && !x.envoyes) throw new Error('L’envoi a échoué, rien n’est parti.');
         closeApercu();
-        toast(x.envoyes ? `${x.envoyes} mail${x.envoyes > 1 ? 's' : ''} envoyé${x.envoyes > 1 ? 's' : ''}` : 'Aucun mail envoyé');
+        const qd = quand ? new Date(quand).toLocaleString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '';
+        toast(x.envoyes ? `${x.envoyes} mail${x.envoyes > 1 ? 's' : ''} ${quand ? 'programmé' + (x.envoyes > 1 ? 's' : '') + ' · ' + qd : 'envoyé' + (x.envoyes > 1 ? 's' : '')}` : 'Aucun mail envoyé');
         if (onDone) onDone(x); else { S.sel.clear(); renderBulk(); }
         refreshMeta(); load(true);
       } catch (e) { g.disabled = false; g.textContent = 'Réessayer'; $('#eCancel', w).disabled = false; toast(errMsg(e)); }
@@ -1434,6 +1456,129 @@ async function openEnvoi(slug, idsSel, onDone) {
     catch (e) { $('#eCorps', w).innerHTML = `<p class="empty">${esc(errMsg(e))}</p>`; }
   };
   prep();
+}
+
+
+/* ---------- séquences : plusieurs mails par campagne, envoyés à J+N après le mail de départ (9h, 7 j/7) ---------- */
+const jb = j => `<span class="sqj">J+${j}</span>`;
+const seqFn = body => fnCall('crm-sequences', body);
+const pl = (n, m) => `${fmtN(n)} ${m}${n > 1 ? 's' : ''}`;
+async function seqCard(d, slug, data) {
+  const box = $('#cSeq', d); if (!box) return;
+  let q = data;
+  if (!q) { try { q = await seqFn({ action: 'lire', campagne: slug }); } catch (e) { box.innerHTML = `<h4>Séquence de relances</h4><p class="small mut">${esc(errMsg(e))}</p>`; return; } }
+  if (!$('#cSeq', d)) return;
+  const R = q.reglages || {}, et = q.etapes || [], rel = et.filter(e => e.jour > 0), e0 = et.find(e => e.jour === 0);
+  const st = q.stats || {}, pj = st.par_jour || {};
+  const depart = q.depart_externe
+    ? `<button type="button" class="sqr" data-voir0>${jb(0)}<span class="txt"><b>Mail de départ</b><span class="small mut">Déjà en place · touche pour le voir</span></span>${ico('eye')}</button>`
+    : e0 ? `<button type="button" class="sqr" data-st="${e0.id}">${jb(0)}<span class="txt"><b>${esc(e0.sujet)}</b><span class="small mut">Mail de départ · part quand tu ajoutes des contacts</span></span>${ico('right')}</button>`
+    : `<button type="button" class="sqr add" data-new0>${jb(0)}<span class="txt"><b>Écrire le mail de départ</b><span class="small mut">Le premier mail, envoyé quand tu ajoutes des contacts</span></span>${ico('plus')}</button>`;
+  const rows = rel.map(e => `<button type="button" class="sqr" data-st="${e.id}">${jb(e.jour)}<span class="txt"><b>${esc(e.sujet)}</b><span class="small mut">${pj[e.jour] ? pl(pj[e.jour], 'envoi') : 'Pas encore envoyée'}</span></span>${ico('right')}</button>`).join('');
+  const chiffres = (st.en_cours || st.termines || st.arretes) ? `<div class="sqst"><span><b>${fmtN(st.en_cours || 0)}</b> en cours</span><span><b>${fmtN(st.termines || 0)}</b> terminé${st.termines > 1 ? 's' : ''}</span><span><b>${fmtN(st.arretes || 0)}</b> arrêté${st.arretes > 1 ? 's' : ''}</span></div>` : '';
+  box.innerHTML = `<h4>Séquence de relances${rel.length ? `<label class="sw"><input type="checkbox" id="sqOn" ${R.actif ? 'checked' : ''}><i></i><span>${R.actif ? 'Active' : 'En pause'}</span></label>` : ''}</h4>
+    <p class="small mut sqinfo">${rel.length ? `Chaque relance part à ${R.heure || 9}h (heure de Paris), 7 j/7, au jour indiqué après le mail de départ. Elle s’arrête toute seule en cas de STOP, de désinscription ou de rebond.` : 'Ajoute des mails qui partent tout seuls quelques jours après le mail de départ (J+3, J+7…).'}</p>
+    ${chiffres}<div class="sql">${depart}${rows}</div>
+    <div class="sqbas"><button type="button" class="btn small" id="sqAdd">${ico('plus')}Ajouter une relance</button>
+    ${q.inscription_possible && rel.length ? `<label class="echk"><input type="checkbox" id="sqIns" ${R.arret_inscription ? 'checked' : ''}> Arrêter si la personne s’inscrit sur ${esc(q.marque_nom)}</label>` : ''}</div>`;
+  const v0 = $('[data-voir0]', box); if (v0) v0.onclick = () => openApercu({ campagne: slug });
+  const n0 = $('[data-new0]', box); if (n0) n0.onclick = () => openEtape(d, slug, q, { jour: 0 });
+  $$('[data-st]', box).forEach(b => b.onclick = () => openEtape(d, slug, q, et.find(e => String(e.id) === b.dataset.st)));
+  $('#sqAdd', box).onclick = () => openEtape(d, slug, q, { jour: rel.length ? Math.min(365, rel[rel.length - 1].jour + 4) : 3 });
+  const ins = $('#sqIns', box);
+  if (ins) ins.onchange = async () => {
+    try { seqCard(d, slug, await seqFn({ action: 'reglages', campagne: slug, arret_inscription: ins.checked })); toast(ins.checked ? `Arrêt si inscription sur ${q.marque_nom}` : 'La séquence continue même après inscription'); }
+    catch (e) { ins.checked = !ins.checked; toast(errMsg(e)); }
+  };
+  const on = $('#sqOn', box);
+  if (on) on.onchange = () => {
+    const regler = async (b, msg) => {
+      try { seqCard(d, slug, await seqFn(Object.assign({ action: 'reglages', campagne: slug }, b))); toast(msg); }
+      catch (e) { on.checked = !on.checked; toast(errMsg(e)); }
+    };
+    if (!on.checked) return regler({ actif: false }, 'Séquence en pause');
+    if (R.depuis) return regler({ actif: true }, 'Séquence réactivée');
+    const n = q.depart_externe ? q.deja_recu || 0 : 0;
+    const w = dialog('Activer la séquence', `<p class="small" style="margin:0">Toutes les personnes qui recevront le mail de départ à partir de maintenant recevront ensuite ${rel.length > 1 ? `les ${rel.length} relances` : 'la relance'} automatiquement, à ${R.heure || 9}h.</p>
+      ${n ? `<label class="echk"><input type="checkbox" id="acAnc"> Inclure aussi les ${pl(n, 'personne')} qui l’ont déjà reçu</label><p class="small mut" style="margin:0">Elles recevront la prochaine relance prévue au prochain envoi du matin (à partir de ${R.heure || 9}h), puis les suivantes avec le même écart.</p>` : ''}
+      <div class="mact"><button class="btn" id="acNo">Annuler</button><button class="btn primary" id="acGo">Activer</button></div>`);
+    const annuler = () => { on.checked = false; closeApercu(); };
+    $('#acNo', w).onclick = annuler; $('#mX', w).onclick = annuler; w.onclick = e => { if (e.target === w) annuler(); };
+    $('#acGo', w).onclick = () => { const anc = $('#acAnc', w); closeApercu(); regler({ actif: true, inclure_anciens: !!(anc && anc.checked) }, 'Séquence activée'); };
+  };
+}
+function openEtape(d, slug, q, e) {
+  e = e || { jour: 3 };
+  const zero = e.jour === 0, neuf = !e.id;
+  const titre = zero ? 'Mail de départ (J+0)' : neuf ? 'Nouvelle relance' : `Relance J+${e.jour}`;
+  const corps0 = 'Bonjour {prénom},\n\n\n\nÀ bientôt,\nSamy';
+  const w = dialog(titre, `<div class="seqed">
+    ${zero ? '' : `<label class="f">Envoyer<span class="sejr">J + <input type="number" id="seJ" min="1" max="365" inputmode="numeric" value="${e.jour}"> jours après le mail de départ, à ${(q.reglages || {}).heure || 9}h</span></label>`}
+    <label class="f">Objet<input id="seS" maxlength="200" value="${esc(e.sujet || '')}" placeholder="ex. Tu as pu essayer ?"></label>
+    <label class="f">Texte<textarea id="seC" rows="9">${esc(e.corps || corps0)}</textarea></label>
+    <p class="small mut seaide">{prénom} est remplacé par le prénom (ou retiré s’il est inconnu) · **gras** · une ligne qui commence par « - » fait une liste · les liens sont cliquables.</p>
+    <details class="sebt" ${e.bouton_url ? 'open' : ''}><summary>Bouton (facultatif)</summary>
+      <div class="sebtg"><label class="f">Texte du bouton<input id="seBt" maxlength="60" value="${esc(e.bouton_texte || '')}" placeholder="ex. Ouvrir ${esc(q.marque_nom || '')}"></label>
+      <label class="f">Lien<input id="seBu" type="url" value="${esc(e.bouton_url || '')}" placeholder="https://"></label></div></details>
+    <p class="small mut" style="margin:0">De : ${esc(q.expediteur || '')}</p>
+    <div id="seFr" class="efr hidden"></div>
+    <div class="mact seact">${neuf ? '' : '<button class="btn danger small" id="seDel">Supprimer</button>'}<span class="sp"></span>
+      <button class="btn small" id="seVoir">${ico('eye')}Aperçu</button><button class="btn small" id="seTest">${ico('send')}M’envoyer un test</button><button class="btn primary small" id="seOk">Enregistrer</button></div></div>`);
+  const brouillon = () => ({ id: e.id || null, jour: zero ? 0 : Number($('#seJ', w).value), sujet: $('#seS', w).value, corps: $('#seC', w).value,
+    bouton_texte: $('#seBt', w).value, bouton_url: $('#seBu', w).value.trim() });
+  const occupe = (b, t) => { const o = b.innerHTML; b.disabled = true; b.textContent = t; return () => { b.disabled = false; b.innerHTML = o; }; };
+  $('#seVoir', w).onclick = async () => {
+    const box = $('#seFr', w), fin = occupe($('#seVoir', w), 'Aperçu…');
+    try {
+      const r = await seqFn({ action: 'apercu', campagne: slug, etape: brouillon(), prenom: 'Nadia' });
+      box.innerHTML = ''; const f = document.createElement('iframe'); f.className = 'mframe'; f.title = 'Aperçu du mail';
+      f.setAttribute('sandbox', 'allow-popups allow-popups-to-escape-sandbox'); f.srcdoc = String(r.html).replace(/<head([^>]*)>/i, '<head$1><base target="_blank">');
+      box.appendChild(f); box.classList.remove('hidden'); box.scrollIntoView({ block: 'nearest' });
+    } catch (x) { toast(errMsg(x)); }
+    fin();
+  };
+  $('#seTest', w).onclick = async () => {
+    const fin = occupe($('#seTest', w), 'Envoi…');
+    try { const r = await seqFn({ action: 'test', campagne: slug, etape: brouillon() }); toast(`Test envoyé à ${r.a}`); } catch (x) { toast(errMsg(x)); }
+    fin();
+  };
+  $('#seOk', w).onclick = async () => {
+    const fin = occupe($('#seOk', w), 'Enregistrement…');
+    try {
+      const r = await seqFn({ action: 'etape', campagne: slug, etape: brouillon() });
+      closeApercu(); toast(zero ? 'Mail de départ enregistré' : 'Relance enregistrée'); seqCard(d, slug, r);
+      if (zero) { await persoCamps(true); const a = $('#cAdd', d); if (a && envoyable(slug)) { a.hidden = false; a.onclick = () => openChoixContacts(slug, []); } }
+    } catch (x) { fin(); toast(errMsg(x)); }
+  };
+  const del = $('#seDel', w);
+  if (del) del.onclick = async () => {
+    if (!del.dataset.ok) { del.dataset.ok = '1'; del.textContent = 'Confirmer la suppression'; return; }
+    const fin = occupe(del, 'Suppression…');
+    try { const r = await seqFn({ action: 'etape_suppr', campagne: slug, id: e.id }); closeApercu(); toast('Mail supprimé'); seqCard(d, slug, r); if (zero) persoCamps(true); }
+    catch (x) { fin(); toast(errMsg(x)); }
+  };
+  setTimeout(() => { const s = $('#seS', w); if (s && !s.value) s.focus(); }, 60);
+}
+function openNouvelleCampagne() {
+  const COUL = { Malino: '#7B5CFF', PaceApp: '#1E3B8A', samy: '#16181D' };
+  let marque = 'Malino';
+  const w = dialog('Nouvelle campagne', `<label class="f">Nom<input id="ncN" maxlength="80" placeholder="ex. Relance rentrée"></label>
+    <div class="f">Marque<div class="seg" id="ncM"><button type="button" data-m="Malino" class="on">Malino</button><button type="button" data-m="PaceApp">PaceApp</button><button type="button" data-m="samy">Neutre (Samy)</button></div></div>
+    <label class="f">Couleur<input type="color" id="ncC" value="${COUL.Malino}" class="nccol"></label>
+    <p class="small mut" style="margin:0">Ensuite, tu écris le mail de départ et les relances (J+3, J+7…), puis tu ajoutes des contacts.</p>
+    <div class="mact"><button class="btn" id="ncX">Annuler</button><button class="btn primary" id="ncGo">Créer</button></div>`);
+  $$('[data-m]', w).forEach(b => b.onclick = () => { marque = b.dataset.m; $$('[data-m]', w).forEach(x => x.classList.toggle('on', x === b)); $('#ncC', w).value = COUL[marque]; });
+  $('#ncX', w).onclick = closeApercu;
+  $('#ncGo', w).onclick = async () => {
+    const g = $('#ncGo', w); g.disabled = true; g.textContent = 'Création…';
+    try {
+      const r = await seqFn({ action: 'creer', nom: $('#ncN', w).value, marque, couleur: $('#ncC', w).value });
+      closeApercu(); await refreshCamps(); persoCamps(true); openCampagne(r.slug);
+      toast('Campagne créée : écris le mail de départ');
+      if (S.page === 'campagnes' && $('#pCamp')) renderCampagnes(true);
+    } catch (e) { g.disabled = false; g.textContent = 'Créer'; toast(errMsg(e)); }
+  };
+  setTimeout(() => $('#ncN', w).focus(), 60);
 }
 
 /* ajouter des contacts à une campagne depuis sa page : recherche, choix, puis le même aperçu et la même confirmation que l'envoi en lot */
@@ -1491,7 +1636,7 @@ async function openAjoutCamp(d, c) {
   const all = S.camps.campagnes || [];
   await persoCamps();
   if (!$('#mveil')) return;
-  const camps = ENVOYABLES.concat((S.perso || []).map(x => x.slug)).map(s => all.find(x => x.slug === s) || (S.perso || []).find(x => x.slug === s) || { slug: s, nom: s });
+  const camps = Array.from(new Set(ENVOYABLES.concat((S.perso || []).map(x => x.slug), (S.seqs || []).filter(x => x.depart).map(x => x.slug)))).map(s => all.find(x => x.slug === s) || (S.perso || []).find(x => x.slug === s) || { slug: s, nom: s });
   const bloque = c.desinscrit ? 'Cette personne ne veut plus être contactée.' : c.a_exclure ? 'Ce contact est exclu des envois : désactive « Exclu des envois » dans sa fiche pour pouvoir lui écrire.' : '';
   $('#acCorps', w).innerHTML = (bloque ? `<p class="acwarn">${esc(bloque)}</p>` : `<p class="small mut" style="margin:0 0 6px">Tu verras le mail avant de confirmer. Il part tout de suite à <b>${esc(c.email)}</b>.</p>`)
     + `<div class="aclist">${camps.map(x => { const deja = recues.has(x.slug); return `<button type="button" class="acrow" data-camp="${esc(x.slug)}" ${deja || bloque ? 'disabled' : ''}>${campDot(x.couleur)}<span class="txt"><b>${esc(String(x.nom).replace(/[«»]/g, '').trim())}</b>${x.description ? `<span class="small mut">${esc(x.description)}</span>` : ''}</span>${deja ? '<span class="chip t-ok">Déjà reçue</span>' : ico('right')}</button>`; }).join('')}</div>`;
