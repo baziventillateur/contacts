@@ -1,5 +1,6 @@
 /* Contacts — appli de contacts centralisés (Supabase, espace crm du projet Malino) */
-const APP_VERSION = '1.11.0';
+const APP_VERSION = '1.12.0';
+const SHEET_URL = 'https://claude.ai/artifact/8CDf2v6LQcaRbUFmUVi4St'; // copie « Prospects PaceApp » (la base Contacts reste la référence)
 const SB_URL = 'https://fcfkfuqzgsmckkxqfwuo.supabase.co';
 const SB_KEY = 'sb_publishable_a3SNrQOSCH20T5sKsJxuAA_s7H4yCSR';
 const sb = supabase.createClient(SB_URL, SB_KEY, {
@@ -15,7 +16,7 @@ const wide = () => window.matchMedia('(min-width: 900px)').matches;
 const fmtN = n => (n ?? 0).toLocaleString('fr-FR');
 const fmtD = x => x ? new Date(x).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) : '';
 
-const STATUTS = ['Client', 'Utilisateur', 'À contacter', 'Contacté', 'A répondu', 'Intéressé', 'Pas intéressé', 'E-mail à vérifier', 'Ancien contact Beecook', 'Désinscrit'];
+const STATUTS = ['Client', 'Utilisateur', 'Inscrit', 'À contacter', 'Contacté', 'A répondu', 'Intéressé', 'Pas intéressé', 'E-mail à vérifier', 'Ancien contact Beecook', 'Désinscrit'];
 const ORIG_LABEL = { 'Beecook (2021-2022)': 'Beecook', 'Prospection PaceApp (Clay)': 'Clay', 'Prospection PaceApp (CV)': 'CV' };
 
 /* ---------- icônes (traits) ---------- */
@@ -43,6 +44,8 @@ const I = {
   back: '<path d="M15 5l-7 7 7 7"/>',
   menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
   eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
+  link: '<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  sheet: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M10 3v18"/>',
   ban: '<circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/>',
   out: '<path d="M15 4h4v16h-4M10 17l5-5-5-5M15 12H4"/>',
   send: '<path d="M21 3L10 14M21 3l-7 18-4-7-7-4z"/>',
@@ -254,10 +257,15 @@ function shell() {
           <div class="seg only-d" role="group" aria-label="Affichage">
             <button data-mode="table">${ico('table')}Tableau</button><button data-mode="liste">${ico('list')}Liste</button>
           </div>
+          <a class="btn" id="sheetBtn" href="${SHEET_URL}" target="_blank" rel="noopener" title="Ouvrir le Sheet « Prospects PaceApp »" aria-label="Ouvrir le Sheet Prospects PaceApp">${ico('sheet')}<span class="only-d">Sheet</span></a>
           <button class="btn primary only-d" id="newBtn">${ico('plus')}Nouveau</button>
         </div>
         <div class="top-actions hidden" id="topK">
           <button class="btn" id="kRefresh">${ico('refresh')}<span class="only-d">Actualiser</span></button>
+        </div>
+        <div class="top-actions hidden" id="topL">
+          <button class="btn" id="lRefresh" aria-label="Actualiser">${ico('refresh')}<span class="only-d">Actualiser</span></button>
+          <button class="btn primary" id="lNew">${ico('plus')}<span class="only-d">Nouveau lien</span><span class="only-m">Lien</span></button>
         </div>
       </header>
       <div id="pContacts">
@@ -276,12 +284,14 @@ function shell() {
       <div class="more" id="more"></div>
       </div>
       <div id="pCamp" class="hidden"></div>
+      <div id="pLiens" class="hidden"></div>
     </main>
   </div>
   <button class="fab only-m" id="fab" aria-label="Ajouter un contact">${ico('plus')}</button>
   <nav class="bnav only-m" aria-label="Navigation">
     <button class="on" id="nContacts">${ico('users')}Contacts</button>
     <button id="nCamp">${ico('send')}Campagnes</button>
+    <button id="nLiens">${ico('link')}Liens</button>
     <button id="nVues">${ico('list')}Vues</button>
   </nav>`;
   renderSide();
@@ -289,7 +299,10 @@ function shell() {
   $('#nVues').onclick = () => toggleSide(true);
   $('#nContacts').onclick = () => { showPage('contacts'); applyVue('tous'); window.scrollTo(0, 0); };
   $('#nCamp').onclick = () => showPage('campagnes');
+  $('#nLiens').onclick = () => showPage('liens');
   $('#kRefresh').onclick = () => renderCampagnes(true);
+  $('#lRefresh').onclick = () => renderLiens(true);
+  $('#lNew').onclick = () => openLienForm(null);
   $('#expBtn').onclick = exportCsv;
   $('#newBtn').onclick = () => openForm(null);
   $('#fab').onclick = () => openForm(null);
@@ -357,6 +370,8 @@ function renderSide() {
     <button class="sbtn ${S.page === 'contacts' ? 'on' : ''}" id="sPContacts">${ico('users')}Contacts<span class="n">${S.stats ? fmtN(S.stats.total) : ''}</span></button>
     <button class="sbtn ${S.page === 'campagnes' ? 'on' : ''}" id="sPCamp">${ico('send')}Campagnes<span class="n">${S.camps ? fmtN(S.camps.total_envois) : ''}</span></button>
     <button class="sbtn" id="sEnv">${ico('mail')}Envoyés</button>
+    <button class="sbtn ${S.page === 'liens' ? 'on' : ''}" id="sPLiens">${ico('link')}Liens d’inscription<span class="n">${S.liens ? fmtN(S.liens.reduce((a, l) => a + (+l.inscrits || 0), 0)) : ''}</span></button>
+    <a class="sbtn" href="${SHEET_URL}" target="_blank" rel="noopener">${ico('sheet')}Sheet prospects<span class="n">↗</span></a>
     <div class="shead">Favoris</div>
     ${favs.length ? favs.map(r => `<button class="sbtn" data-fav="${r.id}"><span class="av" style="width:18px;height:18px;font-size:9px;background:${avColor(r.id)}">${esc(initials(r))}</span>${esc(fullName(r))}</button>`).join('')
       : '<p class="small mut" style="padding:0 8px;margin:2px 0">Touche l’étoile d’un contact pour l’ajouter ici.</p>'}
@@ -375,6 +390,7 @@ function renderSide() {
   $('#sPContacts').onclick = () => { toggleSide(false); showPage('contacts'); };
   $('#sPCamp').onclick = () => { toggleSide(false); showPage('campagnes'); };
   $('#sEnv').onclick = () => { toggleSide(false); openEnvoyes(); };
+  $('#sPLiens').onclick = () => { toggleSide(false); showPage('liens'); };
   $$('[data-fav]', s).forEach(b => b.onclick = () => { toggleSide(false); openFiche(+b.dataset.fav); });
   $$('[data-vue]', s).forEach(b => b.onclick = e => {
     if (e.target.closest('[data-delvue]')) return;
@@ -827,6 +843,7 @@ function renderFiche(d, c) {
         <a class="${wa ? '' : 'off'}" href="${wa ? 'https://wa.me/' + wa : '#'}" target="_blank" rel="noopener">${ico('wa')}WhatsApp</a>
       </div>
       <div class="card"><h4>Coordonnées et suivi</h4>${formFields(c)}</div>
+      ${c.commentaire_inscrit ? `<div class="card"><h4>Commentaire de l’inscrit</h4><p class="small" style="margin:0 0 6px;line-height:1.45;white-space:pre-line">${esc(c.commentaire_inscrit)}</p></div>` : ''}
       ${c.accroche ? `<div class="card"><h4>Accroche utilisée</h4><p class="small" style="margin:0 0 6px;line-height:1.45">${esc(c.accroche)}</p></div>` : ''}
       <div class="card"><h4>Campagnes reçues <span class="mut" id="envN" style="text-transform:none;letter-spacing:0"></span></h4><div id="envBox"><p class="small mut" style="margin:4px 0 8px">Chargement…</p></div>
         <button type="button" class="btn small" id="dCamp" style="margin-top:6px">${ico('plus')}Ajouter à une campagne</button></div>
@@ -971,16 +988,20 @@ function openFilters() {
 /* ---------- espaces : contacts / campagnes ---------- */
 function showPage(pg, silent) {
   S.page = pg;
-  const c = pg === 'campagnes';
-  $('#pContacts').classList.toggle('hidden', c);
+  const c = pg === 'campagnes', l = pg === 'liens', k = !c && !l;
+  $('#pContacts').classList.toggle('hidden', !k);
   $('#pCamp').classList.toggle('hidden', !c);
-  $('#topC').classList.toggle('hidden', c);
+  $('#pLiens').classList.toggle('hidden', !l);
+  $('#topC').classList.toggle('hidden', !k);
   $('#topK').classList.toggle('hidden', !c);
-  const fab = $('#fab'); if (fab) fab.classList.toggle('hidden', c);
-  const cam = $('#camFab'); if (cam) cam.classList.toggle('hidden', c);
-  $('#nContacts').classList.toggle('on', !c);
+  $('#topL').classList.toggle('hidden', !l);
+  const fab = $('#fab'); if (fab) fab.classList.toggle('hidden', !k);
+  const cam = $('#camFab'); if (cam) cam.classList.toggle('hidden', !k);
+  $('#nContacts').classList.toggle('on', k);
   $('#nCamp').classList.toggle('on', c);
+  $('#nLiens').classList.toggle('on', l);
   if (c) { $('#vTitle').textContent = 'Campagnes'; $('#vCount').textContent = ''; if (!silent) renderCampagnes(); }
+  else if (l) { $('#vTitle').textContent = 'Liens d’inscription'; $('#vCount').textContent = ''; if (!silent) renderLiens(); }
   else if (!silent) { $('#vTitle').textContent = (VUES_BASE.find(v => v.id === S.vue) || {}).nom || 'Contacts'; renderChips(); }
   renderSide();
 }
@@ -1417,6 +1438,122 @@ async function loadEnvois(d, c) {
   if (!env.length) { box.innerHTML = '<p class="small mut" style="margin:4px 0 8px">Aucune campagne reçue pour l’instant.</p>'; return; }
   box.innerHTML = `<div class="tline">${env.map(x => `<button type="button" class="ti ${MARKETING.includes(x.type) ? '' : 'auto'}" data-env="${x.id}" title="Voir le mail">${campDot(x.couleur)}<div><b>${esc(campShort(x.nom))}</b><span class="small mut">${esc(fmtD(x.envoye_le))}${x.statut === 'scheduled' ? ' · programmé' : x.statut === 'bounced' ? ' · rebond' : ''}</span></div><span class="voir">${ico('eye')}Voir le mail</span></button>`).join('')}</div>`;
   $$('[data-env]', box).forEach(b => b.onclick = () => openApercu({ envoi_id: +b.dataset.env }));
+}
+
+/* ---------- liens d'inscription : page publique inscription.html?l=<code> ---------- */
+const MARQUES = {
+  samy: { nom: 'Samy (neutre)', court: 'Samy', couleur: '#16181D', exp: 'contact@paceapp.fr' },
+  paceapp: { nom: 'PaceApp', court: 'PaceApp', couleur: '#1E3B8A', exp: 'contact@paceapp.fr' },
+  malino: { nom: 'Malino', court: 'Malino', couleur: '#7B5CFF', exp: 'malino@paceapp.fr' },
+  'vacances-muslims': { nom: 'Vacances Muslims', court: 'Vacances Muslims', couleur: '#0E6A6A', exp: 'inscription@vacancesmuslims.fr' }
+};
+const lienUrl = l => new URL('inscription.html', location.href).href.split('?')[0] + '?l=' + l.code;
+async function copier(txt) {
+  try { await navigator.clipboard.writeText(txt); toast('Lien copié'); }
+  catch (e) { prompt('Copiez le lien :', txt); }
+}
+async function renderLiens(force) {
+  const P = $('#pLiens'); if (!P) return;
+  if (force || !S.liens) {
+    if (!S.liens) P.innerHTML = '<p class="empty">Chargement…</p>';
+    try { S.liens = await rpc('crm_liens_inscription') || []; } catch (e) { P.innerHTML = `<p class="empty">${esc(errMsg(e))}</p>`; return; }
+    renderSide();
+  }
+  const L = S.liens;
+  const tot = L.reduce((a, l) => a + (+l.inscrits || 0), 0);
+  $('#vCount').textContent = L.length ? `${L.length} lien${L.length > 1 ? 's' : ''} · ${fmtN(tot)} inscrit${tot > 1 ? 's' : ''}` : '';
+  P.innerHTML = `<div class="liens">
+    <p class="small mut" style="margin:2px 2px 12px;line-height:1.5">Créez un lien, choisissez ses étiquettes et ses réglages, puis envoyez-le : chaque personne laisse son prénom, son e-mail et un commentaire, confirme son adresse avec un code reçu par e-mail, et arrive dans vos contacts avec ces étiquettes.</p>
+    ${L.length ? L.map(l => {
+      const m = MARQUES[l.marque] || MARQUES.samy;
+      return `<article class="lcard${l.actif ? '' : ' off'}" data-lien="${l.id}">
+        <div class="lhead"><span class="ldot" style="background:${m.couleur}"></span><div style="min-width:0;flex:1"><h3>${esc(l.sujet)}</h3>
+          <div class="small mut">${esc(m.court)} · créé le ${fmtD(l.created_at)}${l.actif ? '' : ' · <b>désactivé</b>'}</div></div>
+          <div class="lnum"><b>${fmtN(+l.inscrits || 0)}</b><span>inscrit${(+l.inscrits || 0) > 1 ? 's' : ''}</span></div></div>
+        <div class="chips">${(l.tags || []).map(t => `<span class="chip" style="${tagStyle(t)}">${esc(t)}</span>`).join('')}<span class="chip t-gray">${esc(l.statut)}</span><span class="chip t-gray">${esc(l.type_contact)}</span>${l.secteur ? `<span class="chip t-pur">${esc(l.secteur)}</span>` : ''}${+l.en_attente ? `<span class="chip t-gray">${fmtN(+l.en_attente)} en attente du code</span>` : ''}</div>
+        ${l.note_interne ? `<p class="small lnote">${esc(l.note_interne)}</p>` : ''}
+        <div class="lurl"><input readonly value="${esc(lienUrl(l))}" aria-label="Lien d’inscription" onfocus="this.select()"></div>
+        <div class="lact">
+          <button class="btn small primary" data-copy="${l.id}">${ico('link')}Copier le lien</button>
+          <a class="btn small" href="${esc(lienUrl(l))}" target="_blank" rel="noopener">Ouvrir</a>
+          <button class="btn small" data-insc="${l.id}">${ico('users')}Inscrits</button>
+          <button class="btn small" data-edit="${l.id}">Modifier</button>
+          <button class="btn small link" data-act="${l.id}" style="margin-left:auto">${l.actif ? 'Désactiver' : 'Réactiver'}</button>
+        </div>
+      </article>`;
+    }).join('') : `<div class="lempty"><p>Aucun lien pour l’instant.</p><button class="btn primary" id="lFirst">${ico('plus')}Créer un lien d’inscription</button></div>`}
+  </div>`;
+  const byId = id => L.find(l => l.id === +id);
+  $$('[data-copy]', P).forEach(b => b.onclick = () => copier(lienUrl(byId(b.dataset.copy))));
+  $$('[data-edit]', P).forEach(b => b.onclick = () => openLienForm(byId(b.dataset.edit)));
+  $$('[data-insc]', P).forEach(b => b.onclick = () => openLienInscrits(byId(b.dataset.insc)));
+  $$('[data-act]', P).forEach(b => b.onclick = async () => {
+    const l = byId(b.dataset.act);
+    if (l.actif && !confirm('Désactiver ce lien ? La page affichera « lien plus actif » ; les inscrits restent dans vos contacts.')) return;
+    try { await rpc('crm_lien_inscription_actif', { p_id: l.id, p_actif: !l.actif }); toast(l.actif ? 'Lien désactivé' : 'Lien réactivé'); renderLiens(true); } catch (e) { toast(errMsg(e)); }
+  });
+  const f = $('#lFirst', P); if (f) f.onclick = () => openLienForm(null);
+}
+function openLienForm(l) {
+  const n = !l; l = l || { sujet: '', message: '', marque: 'samy', tags: [], origine: '', statut: 'Inscrit', secteur: '', type_contact: 'Particulier', note_interne: '' };
+  const v = k => esc(l[k] ?? '');
+  const d = drawer(`<div class="dhead"><button class="icon bare" id="dX" aria-label="Fermer">${ico('back')}</button><h2>${n ? 'Nouveau lien d’inscription' : 'Modifier le lien'}</h2></div>
+    <form class="dbody" id="lForm">
+      <div class="card"><h4>Ce que voit la personne</h4><div class="fgrid">
+        <label class="f full">Sujet de l’inscription *<input name="sujet" value="${v('sujet')}" maxlength="140" placeholder="Ex. : Liste d’attente PaceApp Pro" required></label>
+        <label class="f full">Message sous le titre <span class="mut">(facultatif)</span><textarea name="message" rows="3" maxlength="800" placeholder="Ex. : Laissez vos coordonnées, je vous préviens dès l’ouverture.">${v('message')}</textarea></label>
+        <label class="f full">Marque (page et e-mail du code)<select name="marque">${Object.entries(MARQUES).map(([k, m]) => `<option value="${k}" ${k === l.marque ? 'selected' : ''}>${esc(m.nom)} · ${esc(m.exp)}</option>`).join('')}</select></label>
+      </div></div>
+      <div class="card"><h4>Ce que reçoit chaque inscrit dans Contacts</h4><div class="fgrid">
+        <div class="f full">Étiquettes<div id="lTags"></div></div>
+        <label class="f">Statut<select name="statut">${STATUTS.map(s => `<option ${s === l.statut ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></label>
+        <label class="f">Type<select name="type_contact">${['Particulier', 'Pro'].map(s => `<option ${s === l.type_contact ? 'selected' : ''}>${s}</option>`).join('')}</select></label>
+        <label class="f">Secteur<input name="secteur" value="${v('secteur')}" list="lSecList" autocomplete="off"></label>
+        <label class="f">Origine<input name="origine" value="${v('origine')}" autocomplete="off" placeholder="Inscription · <sujet>"></label>
+      </div>
+      <datalist id="lSecList">${(S.stats?.secteurs || []).map(s => `<option value="${esc(s.v)}">`).join('')}</datalist></div>
+      <div class="card"><h4>Note interne <span class="mut" style="text-transform:none;letter-spacing:0">(visible seulement ici)</span></h4>
+        <label class="f full"><span class="sr">Note interne</span><textarea name="note_interne" rows="3" placeholder="Pour qui, pourquoi, où le lien a été partagé…">${v('note_interne')}</textarea></label></div>
+      <p class="small mut" style="margin:0">Le commentaire laissé par la personne est rangé dans sa fiche, à part de vos notes.</p>
+    </form>
+    <div class="dfoot"><span class="small mut" id="lMsg" style="margin-right:auto;align-self:center"></span>
+      <button class="btn" type="button" id="lCancel">Annuler</button><button class="btn primary" type="button" id="lSave">${n ? 'Créer le lien' : 'Enregistrer'}</button></div>`);
+  const tp = tagPicker($('#lTags', d), l.tags || [], null);
+  $('#dX', d).onclick = closeDrawer; $('#lCancel', d).onclick = closeDrawer;
+  $('#lSave', d).onclick = async () => {
+    const f = $('#lForm', d);
+    const p = { id: n ? null : l.id };
+    $$('[name]', f).forEach(el => { p[el.name] = el.value; });
+    p.tags = tp.get();
+    if (!p.sujet.trim()) { $('#lMsg', d).textContent = 'Le sujet est obligatoire.'; f.sujet.focus(); return; }
+    const b = $('#lSave', d); b.disabled = true;
+    try {
+      const r = await rpc('crm_lien_inscription_enregistrer', { p });
+      closeDrawer();
+      await renderLiens(true);
+      if (n && r && r.code) { copier(lienUrl(r)); toast('Lien créé et copié'); }
+      else toast('Lien enregistré');
+    } catch (e) { $('#lMsg', d).textContent = errMsg(e); b.disabled = false; }
+  };
+}
+async function openLienInscrits(l) {
+  const d = drawer(`<div class="dhead"><button class="icon bare" id="dX" aria-label="Fermer">${ico('back')}</button><h2>${esc(l.sujet)}</h2></div><div class="dbody"><p class="empty">Chargement…</p></div>`);
+  $('#dX', d).onclick = closeDrawer;
+  let r;
+  try { r = await rpc('crm_lien_inscrits', { p_id: l.id }) || []; } catch (e) { $('.dbody', d).innerHTML = `<p class="empty">${esc(errMsg(e))}</p>`; return; }
+  const ok = r.filter(x => x.confirme_le), att = r.filter(x => !x.confirme_le);
+  const ligne = x => `<button type="button" class="irow" ${x.contact_id ? `data-c="${x.contact_id}"` : 'disabled'}>
+      <span class="av" style="background:${avColor(x.contact_id || x.id)}">${esc((x.prenom || x.email || '?').slice(0, 1).toUpperCase())}</span>
+      <span style="min-width:0;flex:1;text-align:left"><b>${esc(x.prenom || '')}</b> <span class="mut">${esc(x.email)}</span>
+        ${x.commentaire ? `<span class="small icom">« ${esc(x.commentaire)} »</span>` : ''}</span>
+      <span class="small mut" style="flex:none">${fmtD(x.confirme_le || x.cree_le)}</span></button>`;
+  $('.dbody', d).innerHTML = `
+    <div class="lurl"><input readonly value="${esc(lienUrl(l))}" onfocus="this.select()" aria-label="Lien d’inscription"></div>
+    <div class="card"><h4>Inscrits confirmés <span class="mut" style="text-transform:none;letter-spacing:0">${ok.length}</span></h4>
+      ${ok.length ? ok.map(ligne).join('') : '<p class="small mut" style="margin:4px 0 8px">Personne pour l’instant.</p>'}</div>
+    ${att.length ? `<div class="card"><h4>En attente du code <span class="mut" style="text-transform:none;letter-spacing:0">${att.length}</span></h4>${att.map(ligne).join('')}
+      <p class="small mut" style="margin:6px 0">Ces personnes ont demandé un code mais ne l’ont pas encore saisi (valable 30 minutes).</p></div>` : ''}`;
+  $$('[data-c]', d).forEach(b => b.onclick = () => openFiche(+b.dataset.c));
 }
 
 /* ---------- PWA ---------- */

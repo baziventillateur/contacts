@@ -117,7 +117,7 @@
     const n = data?.non_lues || 0; b.textContent = n > 99 ? '99+' : n; b.classList.toggle('hidden', !n);
     if ('setAppBadge' in navigator) { try { n ? navigator.setAppBadge(n) : navigator.clearAppBadge(); } catch (e) { } }
   }
-  const NICO = { contact: '👤', import: '📥', desinscription: '🚫', probleme: '⚠️', campagne: '📤', test: '🔔', info: '🔔' };
+  const NICO = { contact: '👤', import: '📥', desinscription: '🚫', probleme: '⚠️', campagne: '📤', inscription: '✍️', test: '🔔', info: '🔔' };
   // événements importants : pour chacun, alerte sur le téléphone oui / non et son (même principe que l'admin Malino)
   const NEV = [
     ['contact', '👤', 'Nouveau contact', 'Ajouté à la main ou par photo.'],
@@ -125,6 +125,7 @@
     ['desinscription', '🚫', 'Désinscription', 'Quelqu’un ne veut plus recevoir tes mails (lien ou réponse STOP).'],
     ['probleme', '⚠️', 'Problème d’envoi', 'Mail non délivré (adresse invalide) ou signalé comme spam.'],
     ['campagne', '📤', 'Campagne envoyée', 'Mails envoyés ou programmés, à la main ou par une automatisation.'],
+    ['inscription', '✍️', 'Nouvel inscrit', 'Quelqu’un a confirmé son inscription via un lien d’inscription.'],
     ['test', '🔔', 'Essai', 'Le bouton « Tester » en haut.']
   ];
   const NSONS = [['', '📱', 'Son du téléphone'], ['silence', '🔕', 'Silencieux'], ['one-up', '🍄', '1-UP'], ['secret-zelda', '🗝️', 'Secret Zelda'],

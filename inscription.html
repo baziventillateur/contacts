@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Inscription</title>
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#F3F4F6">
+<link rel="icon" href="favicon.png" type="image/png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{--c:#16181D;--fond:#F3F4F6;--acc:#E8EAEE;--ink:#16181D;--mut:#5B6270;--line:#E3E6EB;--bad:#B42318}
+*{box-sizing:border-box}
+html,body{margin:0;min-height:100%;background:var(--fond);color:var(--ink);font:15px/1.5 Inter,system-ui,-apple-system,"Segoe UI",Roboto,Arial,sans-serif;-webkit-text-size-adjust:100%}
+.wrap{min-height:100vh;display:flex;align-items:flex-start;justify-content:center;padding:clamp(20px,6vh,64px) 16px 40px}
+.card{width:100%;max-width:460px;background:#fff;border-radius:20px;box-shadow:0 1px 2px rgba(16,24,40,.04),0 12px 32px rgba(16,24,40,.08);overflow:hidden}
+.bar{height:6px;background:var(--c)}
+.in{padding:26px 24px 24px}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:18px}
+.brand img,.brand .mono{width:40px;height:40px;border-radius:11px;flex:none}
+.brand .mono{display:flex;align-items:center;justify-content:center;background:var(--c);color:#fff;font-weight:800;font-size:18px;border-radius:20px}
+.brand b{font-size:15px;color:var(--c)}
+h1{font-size:23px;line-height:1.25;margin:0 0 8px;letter-spacing:-.01em}
+.lead{color:var(--mut);margin:0 0 20px;white-space:pre-line}
+label{display:block;font-size:13px;font-weight:600;margin:0 0 6px}
+.opt{font-weight:400;color:var(--mut)}
+input,textarea{width:100%;font:inherit;color:inherit;border:1px solid var(--line);border-radius:11px;padding:11px 12px;background:#fff;outline:none;transition:border-color .15s,box-shadow .15s}
+input:focus,textarea:focus{border-color:var(--c);box-shadow:0 0 0 3px var(--acc)}
+textarea{resize:vertical;min-height:88px}
+.f{margin-bottom:14px}
+.trap{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+button{font:inherit}
+.go{width:100%;height:48px;border:0;border-radius:12px;background:var(--c);color:#fff;font-weight:700;font-size:15.5px;cursor:pointer;margin-top:4px}
+.go[disabled]{opacity:.6;cursor:default}
+.link{border:0;background:none;color:var(--c);font-weight:600;cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:2px}
+.link[disabled]{color:var(--mut);text-decoration:none;cursor:default}
+.legal{font-size:12.5px;color:var(--mut);margin:14px 0 0}
+.err{color:var(--bad);font-size:13.5px;margin:10px 0 0;min-height:1em}
+.code{font-size:30px;letter-spacing:12px;text-align:center;font-weight:700;padding:12px 8px}
+.row{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:14px;font-size:13.5px}
+.done{text-align:center;padding:8px 0 4px}
+.done .ok{width:58px;height:58px;border-radius:29px;background:var(--acc);color:var(--c);display:flex;align-items:center;justify-content:center;margin:0 auto 14px}
+.done svg{width:28px;height:28px;stroke:currentColor;fill:none;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.foot{text-align:center;font-size:12px;color:var(--mut);margin-top:16px}
+.hidden{display:none!important}
+</style>
+</head>
+<body>
+<div class="wrap"><div>
+  <main class="card" id="card" aria-live="polite"><div class="bar"></div><div class="in"><p class="lead">Chargement…</p></div></main>
+  <p class="foot" id="foot"></p>
+</div></div>
+<script>
+(() => {
+  const FN = 'https://fcfkfuqzgsmckkxqfwuo.supabase.co/functions/v1/crm-inscription';
+  const MARQUES = {
+    samy: { nom: 'Samy', couleur: '#16181D', fond: '#F3F4F6', accent: '#E8EAEE', logo: null, tu: false },
+    paceapp: { nom: 'PaceApp', couleur: '#1E3B8A', fond: '#EDF0F7', accent: '#E2E8F6', logo: 'https://paceapp.fr/pwa-icon-192.png', tu: false },
+    malino: { nom: 'Malino', couleur: '#7B5CFF', fond: '#F4F1FF', accent: '#E9E3FF', logo: 'https://malino.paceapp.fr/icon-192.png', tu: true },
+    'vacances-muslims': { nom: 'Vacances Muslims', couleur: '#0E6A6A', fond: '#F7F4EE', accent: '#DCEDEA', logo: 'https://vacancesmuslims.fr/assets/icon-192.png', tu: true }
+  };
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const $ = s => document.querySelector(s);
+  const inner = () => $('#card .in');
+  const lien = (new URLSearchParams(location.search).get('l') || '').trim().toLowerCase();
+  const st = { m: MARQUES.samy, info: null, email: '', prenom: '', commentaire: '', renvoi: 0, timer: null };
+  const T = (tu, vous) => st.m.tu ? tu : vous;
+
+  async function call(body) {
+    const r = await fetch(FN, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(Object.assign({ l: lien }, body)) });
+    let d = {}; try { d = await r.json(); } catch (e) { }
+    return Object.assign({ status: r.status }, d);
+  }
+  function msg(code, extra) {
+    const m = {
+      lien: 'Ce lien d’inscription n’est plus actif.',
+      email: T('Vérifie ton adresse e-mail.', 'Vérifiez votre adresse e-mail.'),
+      prenom: T('Indique ton prénom.', 'Indiquez votre prénom.'),
+      trop_vite: T('Un code vient d’être envoyé. Attends quelques secondes avant d’en demander un autre.', 'Un code vient d’être envoyé. Attendez quelques secondes avant d’en demander un autre.'),
+      trop: 'Trop de demandes pour cette adresse. Réessayez dans une heure.',
+      surcharge: 'Le service est très sollicité. Réessayez dans quelques minutes.',
+      envoi: 'L’e-mail n’a pas pu partir. Réessayez dans un instant.',
+      code: extra && extra.restants !== undefined ? `Code incorrect. Encore ${extra.restants} essai${extra.restants > 1 ? 's' : ''}.` : 'Le code doit faire 6 chiffres.',
+      expire: T('Ce code a expiré. Demande un nouveau code.', 'Ce code a expiré. Demandez un nouveau code.'),
+      bloque: T('Trop d’essais. Demande un nouveau code.', 'Trop d’essais. Demandez un nouveau code.')
+    };
+    return m[code] || 'Une erreur est survenue. Réessayez dans un instant.';
+  }
+  function theme(m) {
+    const r = document.documentElement.style;
+    r.setProperty('--c', m.couleur); r.setProperty('--fond', m.fond); r.setProperty('--acc', m.accent);
+    document.querySelector('meta[name=theme-color]').content = m.fond;
+  }
+  function brand() {
+    const m = st.m;
+    const ini = esc(m.nom.slice(0, 1));
+    return `<div class="brand">${m.logo ? `<img src="${m.logo}" alt="" width="40" height="40" onerror="this.outerHTML='<span class=&quot;mono&quot;>${ini}</span>'">` : `<span class="mono">${ini}</span>`}<b>${esc(m.nom)}</b></div>`;
+  }
+  function vide(t) {
+    inner().innerHTML = `${brand()}<h1>${esc(t)}</h1><p class="lead">Demandez un nouveau lien à la personne qui vous l’a envoyé.</p>`;
+  }
+
+  function formulaire() {
+    const i = st.info;
+    document.title = 'Inscription · ' + i.sujet;
+    inner().innerHTML = `${brand()}
+      <h1>${esc(i.sujet)}</h1>
+      ${i.message ? `<p class="lead">${esc(i.message)}</p>` : `<p class="lead">${T('Laisse ton prénom et ton e-mail pour t’inscrire.', 'Laissez votre prénom et votre e-mail pour vous inscrire.')}</p>`}
+      <form id="fIns" novalidate>
+        <div class="f"><label for="prenom">Prénom</label><input id="prenom" name="prenom" autocomplete="given-name" maxlength="60" required value="${esc(st.prenom)}"></div>
+        <div class="f"><label for="email">E-mail</label><input id="email" name="email" type="email" inputmode="email" autocomplete="email" maxlength="254" required value="${esc(st.email)}"></div>
+        <div class="f"><label for="commentaire">Commentaire <span class="opt">(facultatif)</span></label><textarea id="commentaire" name="commentaire" maxlength="1000" placeholder="${T('Un mot, une question, une précision ?', 'Un mot, une question, une précision ?')}">${esc(st.commentaire)}</textarea></div>
+        <div class="trap" aria-hidden="true"><label for="site">Site</label><input id="site" name="site" tabindex="-1" autocomplete="off"></div>
+        <button class="go" id="goIns" type="submit">${T('Je m’inscris', 'Je m’inscris')}</button>
+        <p class="err" id="err" role="alert"></p>
+        <p class="legal">${T(`Tu recevras un code par e-mail pour confirmer ton adresse. En t’inscrivant, tu acceptes d’être recontacté(e) par ${esc(st.m.nom)} à ce sujet. Tu peux te désinscrire à tout moment en répondant STOP.`, `Vous recevrez un code par e-mail pour confirmer votre adresse. En vous inscrivant, vous acceptez d’être recontacté(e) par ${esc(st.m.nom)} à ce sujet. Vous pouvez vous désinscrire à tout moment en répondant STOP.`)}</p>
+      </form>`;
+    const f = $('#fIns');
+    if (!st.prenom) $('#prenom').focus();
+    f.onsubmit = async e => {
+      e.preventDefault();
+      const prenom = f.prenom.value.trim(), email = f.email.value.trim().toLowerCase(), commentaire = f.commentaire.value.trim();
+      const err = $('#err'); err.textContent = '';
+      if (!prenom) { err.textContent = msg('prenom'); f.prenom.focus(); return; }
+      if (!/^[^\s@]{1,64}@[^\s@]{1,190}\.[^\s@]{2,}$/.test(email)) { err.textContent = msg('email'); f.email.focus(); return; }
+      st.prenom = prenom; st.email = email; st.commentaire = commentaire;
+      const b = $('#goIns'); b.disabled = true; b.textContent = 'Envoi du code…';
+      try {
+        const r = await call({ action: 'demander', prenom, email, commentaire, site: f.site.value });
+        if (!r.ok) { err.textContent = msg(r.error); b.disabled = false; b.textContent = 'Je m’inscris'; return; }
+        st.renvoi = Date.now();
+        saisieCode();
+      } catch (x) { err.textContent = 'Connexion impossible. Vérifiez votre réseau et réessayez.'; b.disabled = false; b.textContent = 'Je m’inscris'; }
+    };
+  }
+
+  function saisieCode() {
+    inner().innerHTML = `${brand()}
+      <h1>${T('Vérifie ta boîte mail', 'Vérifiez votre boîte mail')}</h1>
+      <p class="lead">${T('Nous venons d’envoyer un code à 6 chiffres à', 'Nous venons d’envoyer un code à 6 chiffres à')} <b>${esc(st.email)}</b>. ${T('Saisis-le ici pour confirmer ton inscription.', 'Saisissez-le ici pour confirmer votre inscription.')}</p>
+      <form id="fCode" novalidate>
+        <div class="f"><label for="code">Code reçu par e-mail</label><input id="code" class="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]*" placeholder="••••••"></div>
+        <button class="go" id="goCode" type="submit">Confirmer</button>
+        <p class="err" id="err" role="alert"></p>
+        <div class="row"><button type="button" class="link" id="renv">Renvoyer le code</button><button type="button" class="link" id="chg">Changer d’adresse</button></div>
+        <p class="legal">${T('Pense à regarder dans les courriers indésirables. Le code est valable 30 minutes.', 'Pensez à regarder dans les courriers indésirables. Le code est valable 30 minutes.')}</p>
+      </form>`;
+    const inp = $('#code'), err = $('#err'), go = $('#goCode'), renv = $('#renv');
+    inp.focus();
+    inp.oninput = () => { inp.value = inp.value.replace(/\D/g, '').slice(0, 6); err.textContent = ''; if (inp.value.length === 6) $('#fCode').requestSubmit(); };
+    $('#chg').onclick = () => { clearInterval(st.timer); formulaire(); };
+    const tick = () => {
+      const s = Math.ceil((st.renvoi + 45000 - Date.now()) / 1000);
+      if (s > 0) { renv.disabled = true; renv.textContent = `Renvoyer le code (${s} s)`; }
+      else { renv.disabled = false; renv.textContent = 'Renvoyer le code'; clearInterval(st.timer); }
+    };
+    clearInterval(st.timer); st.timer = setInterval(tick, 1000); tick();
+    renv.onclick = async () => {
+      renv.disabled = true; err.textContent = '';
+      try {
+        const r = await call({ action: 'demander', prenom: st.prenom, email: st.email, commentaire: st.commentaire });
+        if (!r.ok) err.textContent = msg(r.error); else { err.textContent = ''; inp.value = ''; inp.focus(); }
+      } catch (x) { err.textContent = 'Connexion impossible. Réessayez.'; }
+      st.renvoi = Date.now(); clearInterval(st.timer); st.timer = setInterval(tick, 1000); tick();
+    };
+    $('#fCode').onsubmit = async e => {
+      e.preventDefault();
+      const code = inp.value.replace(/\D/g, '');
+      if (code.length !== 6) { err.textContent = msg('code'); return; }
+      go.disabled = true; go.textContent = 'Vérification…';
+      try {
+        const r = await call({ action: 'confirmer', email: st.email, code });
+        if (r.ok) { clearInterval(st.timer); return fini(); }
+        err.textContent = msg(r.error, r); inp.select();
+      } catch (x) { err.textContent = 'Connexion impossible. Réessayez.'; }
+      go.disabled = false; go.textContent = 'Confirmer';
+    };
+  }
+
+  function fini() {
+    inner().innerHTML = `${brand()}<div class="done">
+      <div class="ok"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.2 4.2L19 7"/></svg></div>
+      <h1>C’est confirmé, ${esc(st.prenom)} !</h1>
+      <p class="lead">${T(`Ton inscription « ${esc(st.info.sujet)} » est bien enregistrée. Nous reviendrons vers toi très vite.`, `Votre inscription « ${esc(st.info.sujet)} » est bien enregistrée. Nous reviendrons vers vous très vite.`)}</p>
+    </div>`;
+  }
+
+  async function init() {
+    theme(st.m);
+    if (!/^[a-z0-9]{6,40}$/.test(lien)) return vide('Lien d’inscription introuvable');
+    try {
+      const r = await call({ action: 'lien' });
+      if (r.status === 404 || !r.sujet) return vide('Lien d’inscription introuvable');
+      st.info = r; st.m = MARQUES[r.marque] || MARQUES.samy; theme(st.m);
+      $('#foot').textContent = st.m.nom;
+      if (!r.actif) return vide('Ce lien d’inscription n’est plus actif');
+      formulaire();
+    } catch (e) { inner().innerHTML = `${brand()}<h1>Connexion impossible</h1><p class="lead">Vérifiez votre réseau, puis rechargez la page.</p>`; }
+  }
+  init();
+})();
+</script>
+</body>
+</html>
