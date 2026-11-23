@@ -1,5 +1,5 @@
 /* Contacts — appli de contacts centralisés (Supabase, espace crm du projet Malino) */
-const APP_VERSION = '1.15.1';
+const APP_VERSION = '1.16.0';
 const SHEET_URL = 'https://claude.ai/artifact/8CDf2v6LQcaRbUFmUVi4St'; // copie « Prospects PaceApp » (la base Contacts reste la référence)
 const SB_URL = 'https://fcfkfuqzgsmckkxqfwuo.supabase.co';
 const SB_KEY = 'sb_publishable_a3SNrQOSCH20T5sKsJxuAA_s7H4yCSR';

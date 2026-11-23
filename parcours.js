@@ -35,6 +35,14 @@
     .pcvars{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px;margin-right:-14px;padding-right:14px}.pcvars::-webkit-scrollbar{display:none}.pcvars button{flex:none}
     .seqed textarea#peT{min-height:240px}
   }
+  .pcn{flex:none;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;background:#4B2FD6;color:#fff;font-size:11px;font-weight:800;box-shadow:0 2px 4px rgba(75,47,214,.3)}
+  .pcst{display:flex;flex-wrap:wrap;gap:3px 5px;margin-top:3px}.pcst i{font-style:normal;font-size:11px;font-weight:600;border-radius:6px;padding:1px 6px;background:#F1F2F6;color:#4B5163;white-space:nowrap}
+  .pcst i.e{background:#EEE9FF;color:#4B2FD6}.pcst i.r{background:#DCFCE7;color:#15803D}.pcst i.s{background:#FFF1E6;color:#B45309}.pcst i.v{background:#EAF2FF;color:#1D4ED8}.pcst i.x{background:#FEE2E2;color:#B91C1C}
+  .pcleg{font-size:11px;color:var(--mut);line-height:1.45;margin:-2px 0 8px}
+  .pcfam .pcet{display:inline-block;font-size:10.5px;font-weight:800;color:#4B2FD6;background:#EEE9FF;border-radius:6px;padding:0 6px;margin-right:4px}
+  .pmplan{display:flex;flex-direction:column;gap:4px;margin:4px 0 2px}.pmr{display:flex;align-items:center;gap:8px;font-size:12.5px;padding:5px 8px;border-radius:9px;background:#F7F8FB}.pmr.now{background:#F1ECFF;box-shadow:inset 0 0 0 1.5px #7B5CFF}
+  .pmr .tx{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pmr em{font-style:normal;font-size:11px;font-weight:700;color:var(--mut);white-space:nowrap}.pmr.fait em{color:#15803D}.pmr.saute em{color:#9CA3AF}.pmr.fait .tx,.pmr.saute .tx{color:var(--mut)}
+  .pmnote{font-size:11.5px;color:#8A5A00;background:#FFF8E6;border-radius:8px;padding:6px 8px;margin:6px 0 0;line-height:1.4}
   .pcimg{width:100%;max-height:120px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
   .pcaide{font-size:11.5px;color:var(--mut);line-height:1.5;margin:0}.pcaide code{background:#F1F2F6;border-radius:4px;padding:0 4px;font-size:11px}
   `;
@@ -75,6 +83,24 @@
     $$('.ccard', w).forEach(c => { const m = (($('.cmeta', c) || {}).textContent || ''); c.style.display = !MQ || m.toLowerCase().includes(MQ.toLowerCase()) ? '' : 'none'; });
   }
 
+  // les chiffres d'un mail, en clair
+  function chiffres(e) {
+    const c = [];
+    c.push(e.envoyes ? `<i class="e">✉️ ${fmtN(e.envoyes)} envoyé${e.envoyes > 1 ? 's' : ''}</i>` : '<i>Pas encore envoyé</i>');
+    if (e.envoyes && e.recus != null) c.push(`<i class="r">✅ ${fmtN(e.recus)} reçu${e.recus > 1 ? 's' : ''}</i>`);
+    if (e.rebonds) c.push(`<i class="x">⚠️ ${fmtN(e.rebonds)} rebond${e.rebonds > 1 ? 's' : ''}</i>`);
+    if (e.sautes) c.push(`<i class="s">⏭️ ${fmtN(e.sautes)} sauté${e.sautes > 1 ? 's' : ''} · ${e.saute_pourquoi === 'retard' ? 'inscrits trop tôt' : 'condition non remplie'}</i>`);
+    if (e.a_venir) c.push(`<i class="v">⏳ ${fmtN(e.a_venir)} à venir</i>`);
+    return `<span class="pcst">${c.join('')}</span>`;
+  }
+  const quandRel = x => {
+    if (!x) return '';
+    const d = new Date(x), j = new Date(); j.setHours(0, 0, 0, 0); const k = Math.round((new Date(d).setHours(0, 0, 0, 0) - j) / 864e5);
+    const h = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    if (d - Date.now() < 6e5 && d - Date.now() > -6e5) return 'tout de suite';
+    return (k === 0 ? 'aujourd’hui' : k === 1 ? 'demain' : d.toLocaleDateString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit' })) + ' à ' + h;
+  };
+
   /* ---------- fiche du parcours ---------- */
   async function openParcours(slug, data) {
     let d = $('#drawer');
@@ -91,10 +117,11 @@
         <div class="small mut">Chaque nouvel inscrit reçoit ces mails un par un, au moment indiqué.</div></div></div>
       <div class="card seqc"><h4>Envoi automatique<label class="sw"><input type="checkbox" id="pcOn" ${P.actif ? 'checked' : ''}><i></i><span>${P.actif ? 'Actif' : 'En pause'}</span></label></h4>
         <p class="pcregle">Jamais plus d’un mail ${esc(P.marque || '')} par jour et par famille (relances et rapports compris) · jamais entre 21 h et 9 h · arrêt sur STOP, désinscription ou rebond · un mail en retard de plus de 4 jours est sauté.${P.depuis ? ` Actif pour les inscrits depuis le ${esc(dateH(P.depuis))}.` : ''}</p>
-        <div class="pcnums"><div><b>${fmtN(st.en_cours || 0)}</b><span>en cours</span></div><div><b>${fmtN(st.termines || 0)}</b><span>terminés</span></div><div><b>${fmtN(envTot)}</b><span>envoyés</span></div><div><b>${fmtN(st.ouverts || 0)}</b><span>ouverts</span></div></div></div>
+        <div class="pcnums"><div><b>${fmtN(st.en_cours || 0)}</b><span>en cours</span></div><div><b>${fmtN(st.termines || 0)}</b><span>terminés</span></div><div><b>${fmtN(envTot)}</b><span>envoyés</span></div><div><b>${st.recus == null ? '–' : fmtN(st.recus)}</b><span>reçus</span></div></div></div>
       <div class="card seqc"><h4>Les mails · version ${P.version}<span class="small mut" style="text-transform:none;letter-spacing:0">${q.en_cours_version ? `${pl(q.en_cours_version, 'famille')} sur cette version` : ''}</span></h4>
-        <div class="sql">${et.map(e => `<button type="button" class="sqr" data-pe="${esc(e.id)}"><span class="pcq">${esc(quandTxt(e))}</span><span class="txt"><b>${esc(e.sujet)}</b>
-          <span class="small mut">${e.envoyes ? pl(e.envoyes, 'envoi') : 'Pas encore envoyé'}${e.sautes ? ` · ${e.sautes} sauté${e.sautes > 1 ? 's' : ''}` : ''}</span>${e.condition !== 'toujours' ? `<span class="pccond">${esc((q.conditions || {})[e.condition] || e.condition)}</span>` : ''}</span>${ico('right')}</button>`).join('') || '<p class="small mut">Aucun mail pour l’instant.</p>'}</div>
+        <p class="pcleg">Pour chaque mail : <b>envoyés</b> · <b>reçus</b> (arrivés dans la boîte) · <b>sautés</b> (inscrit trop tôt ou condition non remplie) · <b>à venir</b> (familles en cours qui l’attendent encore).</p>
+        <div class="sql">${et.map((e, i) => `<button type="button" class="sqr" data-pe="${esc(e.id)}"><span class="pcn">${e.num || i + 1}</span><span class="pcq">${esc(quandTxt(e))}</span><span class="txt"><b>${esc(e.sujet)}</b>
+          ${chiffres(e)}${e.condition !== 'toujours' ? `<span class="pccond">${esc((q.conditions || {})[e.condition] || e.condition)}</span>` : ''}</span>${ico('right')}</button>`).join('') || '<p class="small mut">Aucun mail pour l’instant.</p>'}</div>
         <div class="sqbas" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px"><button type="button" class="btn small" id="pcAdd">${ico('plus')}Ajouter un mail</button><button type="button" class="btn small" id="pcTout">${ico('send')}M’envoyer tous les mails en test</button></div>
         ${vAnc.length ? `<p class="small mut" style="margin:8px 0 0">Les familles déjà en cours gardent leur version : ${vAnc.map(v => `version ${v.version} (${pl(v.en_cours, 'famille')})`).join(', ')}.</p>` : ''}</div>
       <div class="card"><h4>Familles</h4><div id="pcFam"><p class="small mut">Chargement…</p></div></div>
@@ -129,16 +156,46 @@
       const lab = { en_cours: 'en cours', termine: 'terminé', arrete: 'arrêté' };
       const mot = { stop: 'STOP', desabonne: 'désabonné', desinscrit: 'désinscrit', rebond: 'rebond', compte_supprime: 'compte supprimé', retire: 'retiré' };
       const row = f => `<div class="pcfam"><span class="tx"><b>${esc(f.prenom ? f.prenom + ' · ' : '')}${esc(f.email)}</b>
-        <span class="small mut">Inscrit le ${esc(dateH(f.debut))} · v${f.version} · ${f.envoyes} envoyé${f.envoyes > 1 ? 's' : ''} · ${esc(lab[f.statut] || f.statut)}${f.motif ? ' (' + esc(mot[f.motif] || f.motif) + ')' : ''}</span>
-        ${f.prochain ? `<span class="small mut">Prochain : ${esc(f.prochain.sujet)} · ${esc(dateH(f.prochain.quand))}</span>` : ''}</span>
-        ${f.statut === 'en_cours' ? `<button class="btn small" data-ret="${esc(f.email)}">Retirer</button>` : ''}</div>`;
+        <span class="small mut">${f.statut === 'en_cours' && f.etape ? `<span class="pcet">Étape ${f.etape}/${f.total}</span>` : ''}${f.envoyes} envoyé${f.envoyes > 1 ? 's' : ''} · ${esc(lab[f.statut] || f.statut)}${f.motif ? ' (' + esc(mot[f.motif] || f.motif) + ')' : ''} · inscrit le ${esc(dateH(f.debut))}</span>
+        ${f.prochain ? `<span class="small mut">Prochain : ${f.prochain.num}. ${esc(f.prochain.sujet)} · ${esc(quandRel(f.prochain.quand))}</span>` : ''}</span>
+        ${f.modifiable ? `<button class="btn small" data-mod="${esc(f.email)}">${f.statut === 'en_cours' ? 'Modifier' : 'Relancer'}</button>` : ''}</div>`;
       box.innerHTML = r.familles.length ? shortList(r.familles, 8, row, 'pcFamMore') : `<p class="small mut">${r.actif ? 'Personne pour l’instant : les prochains inscrits apparaîtront ici.' : 'Le parcours est en pause : active-le pour que les nouveaux inscrits y entrent.'}</p>`;
       $$('[data-more]', box).forEach(b => b.onclick = () => { $('#' + b.dataset.more).classList.remove('hidden'); b.remove(); });
-      $$('[data-ret]', box).forEach(b => b.onclick = async () => {
-        if (!b.dataset.ok) { b.dataset.ok = '1'; b.textContent = 'Confirmer'; return; }
-        try { await pcFn({ action: 'retirer', parcours: slug, email: b.dataset.ret }); toast('Famille retirée du parcours'); familles(slug, d); } catch (e) { toast(errMsg(e)); }
-      });
+      $$('[data-mod]', box).forEach(b => b.onclick = () => { const f = r.familles.find(x => x.email === b.dataset.mod); if (f) modifier(slug, d, f, (r.mails || {})[f.version] || []); });
     } catch (e) { box.innerHTML = `<p class="small mut">${esc(errMsg(e))}</p>`; }
+  }
+
+  // Faire passer une famille à une autre étape (en avant ou en arrière) : aperçu du nouveau calendrier, puis validation
+  function modifier(slug, d, f, mails) {
+    const encours = f.statut === 'en_cours';
+    const w = dialog(encours ? 'Modifier le parcours' : 'Relancer le parcours', `
+      <p class="small" style="margin:0"><b>${esc(f.prenom ? f.prenom + ' · ' : '')}${esc(f.email)}</b><br><span class="mut">${encours ? `Étape ${f.etape}/${f.total}${f.prochain ? ` · prochain : ${esc(quandRel(f.prochain.quand))}` : ''}` : `Parcours ${f.statut === 'termine' ? 'terminé' : 'arrêté'} · ${f.envoyes} mail${f.envoyes > 1 ? 's' : ''} envoyé${f.envoyes > 1 ? 's' : ''}`}</span></p>
+      <label class="f">Passer à l’étape<select id="pmE"><option value="">Choisir une étape…</option>${mails.map(m => `<option value="${esc(m.id)}" ${encours && f.etape === m.num ? 'disabled' : ''}>${m.num}. ${esc(m.sujet.length > 38 ? m.sujet.slice(0, 37) + '…' : m.sujet)}${encours && f.etape === m.num ? ' (actuelle)' : ''}</option>`).join('')}</select></label>
+      <div id="pmPlan"><p class="small mut" style="margin:0">Choisis l’étape : tu verras le nouveau calendrier avant de valider.</p></div>
+      <div class="mact" style="flex-wrap:wrap">${encours ? '<button class="btn danger small" id="pmRet">Retirer du parcours</button><span style="flex:1"></span>' : ''}<button class="btn small" id="pmNo">Annuler</button><button class="btn primary small" id="pmOk" disabled>Valider</button></div>`);
+    const sel = $('#pmE', w), ok = $('#pmOk', w), plan = $('#pmPlan', w);
+    $('#pmNo', w).onclick = closeApercu;
+    sel.onchange = async () => {
+      ok.disabled = true; if (!sel.value) return;
+      plan.innerHTML = '<p class="small mut" style="margin:0">Calcul du calendrier…</p>';
+      try {
+        const r = await pcFn({ action: 'deplacer', parcours: slug, email: f.email, etape: Number(sel.value) });
+        const lab = x => x.etat === 'envoye' ? '✓ déjà envoyé' : x.etat === 'saute' ? 'passé' : '📩 ' + quandRel(x.quand);
+        plan.innerHTML = `<p class="small" style="margin:0 0 4px"><b>Après validation :</b></p><div class="pmplan">${r.plan.map(x => `<div class="pmr ${x.etat === 'envoye' ? 'fait' : x.etat === 'saute' ? 'saute' : ''} ${x.num === r.etape ? 'now' : ''}"><span class="pcn">${x.num}</span><span class="tx">${esc(x.sujet)}</span><em>${esc(lab(x))}</em></div>`).join('')}</div>
+          <p class="pmnote">${r.deja_aujourdhui ? 'Un mail est déjà parti aujourd’hui à cette famille : l’étape ' + r.etape + ' partira demain (un mail par jour au maximum). ' : ''}Les mails avec une condition ne partent que si elle est remplie. Jamais entre 21 h et 9 h.</p>`;
+        ok.disabled = false;
+      } catch (x) { plan.innerHTML = `<p class="small" style="margin:0;color:#B91C1C">${esc(errMsg(x))}</p>`; }
+    };
+    ok.onclick = async () => {
+      const o = ok.innerHTML; ok.disabled = true; ok.textContent = 'Validation…';
+      try { await pcFn({ action: 'deplacer', parcours: slug, email: f.email, etape: Number(sel.value), confirmer: true }); closeApercu(); toast(`Famille passée à l’étape ${sel.selectedIndex}`); openParcours(slug); }
+      catch (x) { ok.disabled = false; ok.innerHTML = o; toast(errMsg(x)); }
+    };
+    const ret = $('#pmRet', w);
+    if (ret) ret.onclick = async () => {
+      if (!ret.dataset.ok) { ret.dataset.ok = '1'; ret.textContent = 'Confirmer le retrait'; return; }
+      try { await pcFn({ action: 'retirer', parcours: slug, email: f.email }); closeApercu(); toast('Famille retirée du parcours'); familles(slug, d); } catch (x) { toast(errMsg(x)); }
+    };
   }
 
   /* ---------- écrire ou modifier un mail ---------- */
