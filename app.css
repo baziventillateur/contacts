@@ -526,3 +526,33 @@ a.btn.primary{color:#fff}
 .nccol{height:32px;width:60px;padding:2px;border:1px solid var(--line);border-radius:8px;background:var(--panel)}
 #ncN{height:34px;border:1px solid var(--line);border-radius:8px;padding:0 9px;font-size:13.5px}
 .modal.mini .mcorps{min-height:0;flex:1 1 auto}
+
+/* v1.18.0 — historique des arrivées de contacts */
+.histo{padding:0 16px 8px}
+.histo:empty{display:none}
+.hhead{display:flex;align-items:center;gap:7px;width:100%;border:1px solid var(--line);background:var(--panel);border-radius:10px;padding:6px 10px;font:inherit;color:var(--ink);cursor:pointer;text-align:left}
+.hhead:hover{border-color:var(--acc-line)}
+.hhead>svg,.hchev svg{width:15px;height:15px;stroke:var(--acc);fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.hchev{display:flex;transition:transform .15s}.hchev svg{stroke:var(--mut2)}
+.histo.open .hchev{transform:rotate(180deg)}
+.hhead b{font-size:12.5px;font-weight:700}
+.hsum{flex:1;min-width:0;font-size:12px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hspark{display:flex;flex:none}
+.histo.open .hhead{border-radius:10px 10px 0 0;border-bottom-color:var(--line2)}
+.hbody{border:1px solid var(--line);border-top:0;border-radius:0 0 10px 10px;background:var(--panel);padding:8px 10px 8px}
+.hbar{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.hflt{color:var(--acc);font-weight:600}
+.hkpi{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:8px 0}
+@media (max-width:560px){.hkpi{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.hk{border:1px solid var(--line2);border-radius:8px;padding:5px 8px;min-width:0}
+.hk>span{display:block;font-size:10px;font-weight:600;color:var(--mut);text-transform:uppercase;letter-spacing:.05em}
+.hk b{display:block;font-size:17px;font-weight:700;color:var(--ink);line-height:1.25;font-variant-numeric:tabular-nums}
+.hk i{display:block;font-style:normal;font-size:11px;color:var(--mut);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hk i.up{color:#15803D}.hk i.dn{color:#B42318}.hk i span{color:var(--mut)}
+.hchart{width:100%;overflow:hidden}.hchart svg{display:block}
+.hax{font:10px Inter,system-ui,sans-serif;fill:#8A909C;font-variant-numeric:tabular-nums}
+.hhit{cursor:pointer}
+.htip{display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;min-height:30px;font-size:12.5px;padding:2px 0 4px;border-bottom:1px solid var(--line2);margin-bottom:6px}
+.hfoot{font-size:11.5px;color:var(--mut);line-height:1.55}.hfoot b{color:var(--ink);font-weight:600}
+.hfoot .mut2{color:var(--mut2);font-size:11px}
+.hfoot #hFerme{float:right;padding:0}

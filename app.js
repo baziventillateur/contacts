@@ -1,5 +1,5 @@
 /* Contacts — appli de contacts centralisés (Supabase, espace crm du projet Malino) */
-const APP_VERSION = '1.17.0';
+const APP_VERSION = '1.18.0';
 const SHEET_URL = 'https://claude.ai/artifact/8CDf2v6LQcaRbUFmUVi4St'; // copie « Prospects PaceApp » (la base Contacts reste la référence)
 const SB_URL = 'https://fcfkfuqzgsmckkxqfwuo.supabase.co';
 const SB_KEY = 'sb_publishable_a3SNrQOSCH20T5sKsJxuAA_s7H4yCSR';
@@ -43,6 +43,8 @@ const I = {
   check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
   right: '<path d="M9 6l6 6-6 6"/>',
   x: '<path d="M6 6l12 12M18 6L6 18"/>',
+  chart: '<path d="M4 20h16M7 16v-4M12 16V6M17 16v-7"/>',
+  chev: '<path d="M6 9l6 6 6-6"/>',
   back: '<path d="M15 5l-7 7 7 7"/>',
   menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
   eye: '<path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
@@ -68,7 +70,7 @@ const VUES_BASE = [
   { id: 'a_contacter', nom: 'À contacter', icon: 'cal', f: { statuts: ['À contacter'] } },
   { id: 'exclus', nom: 'Exclus des envois', icon: 'ban', f: { exclus: true, email: 'tous' } }
 ];
-const emptyF = () => ({ q: '', origines: [], statuts: [], profils: [], secteurs: [], tags: [], zone: '', campagne_recue: '', campagne_non_recue: '', nb_campagnes: '', email: 'avec', joignables: false, avec_tel: false, accord: false, favoris: false, exclus: false, tri: 'recent' });
+const emptyF = () => ({ q: '', origines: [], statuts: [], profils: [], secteurs: [], tags: [], zone: '', campagne_recue: '', campagne_non_recue: '', nb_campagnes: '', email: 'avec', joignables: false, avec_tel: false, accord: false, favoris: false, exclus: false, ajout_du: '', ajout_au: '', tri: 'recent' });
 const S = {
   user: null, stats: null, vues: [], favs: [], rows: [], total: 0, offset: 0, req: 0, page: 'contacts', camps: null,
   f: emptyF(), vue: 'tous', sel: new Set(),
@@ -156,7 +158,7 @@ const cacheKey = f => JSON.stringify(f);
 const skeleton = () => `<div class="cards skel" aria-label="Chargement">${'<div class="row"><span class="av"></span><div class="txt"><i></i><i></i></div></div>'.repeat(8)}</div>`;
 const activeCount = f => ['origines', 'statuts', 'profils', 'secteurs', 'tags'].reduce((n, k) => n + f[k].length, 0)
   + (f.zone ? 1 : 0) + ['campagne_recue', 'campagne_non_recue', 'nb_campagnes'].filter(k => f[k]).length
-  + ['joignables', 'avec_tel', 'accord', 'favoris', 'exclus'].filter(k => f[k]).length;
+  + ['joignables', 'avec_tel', 'accord', 'favoris', 'exclus'].filter(k => f[k]).length + (f.ajout_du || f.ajout_au ? 1 : 0);
 /* étiquettes coloriées : une couleur stable par étiquette */
 const TAGC = [['#E2EAFB', '#1F4FBF'], ['#DDF3EE', '#0F6B5C'], ['#FDEBD8', '#9A4A00'], ['#EFE4FB', '#5B2E91'], ['#FBE3E3', '#A12D2D'], ['#E6F4FA', '#0B6A8C'], ['#FFF4CC', '#7A5A00'], ['#E9F5E1', '#3C6E1E'], ['#FCE7F3', '#9D2463'], ['#ECEEF1', '#4A505C']];
 function tagColors(t) { let h = 0; for (const ch of String(t || '').toLowerCase()) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return TAGC[h % TAGC.length]; }
@@ -282,6 +284,7 @@ function shell() {
       </div>
       <div class="emseg" id="emSeg"></div>
       <div class="achips" id="achips"></div>
+      <div class="histo" id="histo"></div>
       <div class="bulk hidden" id="bulk"></div>
       <section id="list" aria-live="polite"></section>
       <div class="more" id="more"></div>
@@ -318,7 +321,7 @@ function shell() {
     if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); const q = $('#q'); if (q) q.focus(); }
     if (e.key === 'Escape') { if ($('#mveil')) return closeApercu(); closeDrawer(); toggleSide(false); }
   });
-  let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(renderList, 150); });
+  let rz; window.addEventListener('resize', () => { clearTimeout(rz); rz = setTimeout(() => { renderList(); renderHisto(); }, 150); });
   window.addEventListener('scroll', fabWatch, { passive: true });
 }
 /* « afficher plus » : au clic, ou tout seul quand on fait défiler jusqu'en bas (jamais en boucle) */
@@ -428,6 +431,128 @@ function filtersChanged() {
   load(true, true);
 }
 
+
+/* ---------- historique des arrivées de contacts : repliable, par jour / semaine / mois, avec les filtres de la liste ---------- */
+const lsGet = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch (e) { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* stockage indisponible */ } };
+const HISTO = { ouvert: lsGet('contacts-histo', '0') === '1', pas: lsGet('contacts-histo-pas', 'jour'), d: null, cle: '', req: 0, sel: null, t: 0 };
+const MOIS_C = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
+const pD = s => { const [y, m, j] = String(s).slice(0, 10).split('-').map(Number); return new Date(y, m - 1, j); };
+const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const jm = d => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+function histoPeriode(du, au) {
+  if (!du && !au) return '';
+  if (du && au && du === au) return 'Arrivés le ' + jm(pD(du));
+  const a = du ? pD(du) : null, b = au ? pD(au) : null;
+  if (a && b && a.getDate() === 1 && new Date(b.getFullYear(), b.getMonth() + 1, 0).getDate() === b.getDate() && a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear())
+    return `Arrivés en ${MOIS_C[a.getMonth()]} ${a.getFullYear()}`;
+  return a && b ? `Arrivés du ${jm(a)} au ${jm(b)}` : a ? `Arrivés depuis le ${jm(a)}` : `Arrivés jusqu’au ${jm(b)}`;
+}
+// bornes d'une barre : un jour, une semaine (lundi → dimanche) ou un mois
+function histoBornes(debut) {
+  const a = pD(debut), b = new Date(a);
+  if (HISTO.pas === 'semaine') b.setDate(b.getDate() + 6);
+  else if (HISTO.pas === 'mois') { b.setMonth(b.getMonth() + 1); b.setDate(0); }
+  return [iso(a), iso(b)];
+}
+function histoLib(debut, long) {
+  const a = pD(debut);
+  if (HISTO.pas === 'mois') return long ? `${MOIS_C[a.getMonth()]} ${a.getFullYear()}` : MOIS_C[a.getMonth()].replace('.', '') + (a.getMonth() === 0 ? ' ' + String(a.getFullYear()).slice(2) : '');
+  if (HISTO.pas === 'semaine') { const [, b] = histoBornes(debut); return long ? `semaine du ${jm(a)} au ${jm(pD(b))}` : jm(a); }
+  return long ? a.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' }) : jm(a);
+}
+function histoCharger(force) {
+  clearTimeout(HISTO.t);
+  HISTO.t = setTimeout(async () => {
+    const p = Object.assign({}, S.f); delete p.ajout_du; delete p.ajout_au; delete p.tri;
+    const cle = JSON.stringify(p);
+    if (!force && cle === HISTO.cle && HISTO.d) return renderHisto();
+    const my = ++HISTO.req;
+    try { const d = await rpc('crm_historique', { p }); if (my !== HISTO.req) return; if (cle !== HISTO.cle) HISTO.sel = null; HISTO.d = d; HISTO.cle = cle; renderHisto(); }
+    catch (e) { if (my === HISTO.req && !HISTO.d) { const el = $('#histo'); if (el) el.innerHTML = ''; } }
+  }, 300);
+}
+function sparkSvg(ser) {
+  const w = 64, h = 18, n = ser.length || 1, mx = Math.max(1, ...ser.map(x => x.n)), bw = w / n;
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" aria-hidden="true">${ser.map((x, i) => {
+    const bh = x.n ? Math.max(2, Math.round(x.n / mx * h)) : 1;
+    return `<rect x="${(i * bw).toFixed(1)}" y="${h - bh}" width="${Math.max(1, bw - 1).toFixed(1)}" height="${bh}" rx="0.8" fill="${x.n ? 'var(--acc)' : 'var(--line)'}"/>`; }).join('')}</svg>`;
+}
+const plafond = m => { if (m <= 5) return 5; const p = Math.pow(10, Math.floor(Math.log10(m))); for (const k of [1, 2, 2.5, 5, 10]) if (k * p >= m) return k * p; return 10 * p; };
+function chartSvg(ser, W) {
+  const H = 150, pl = 34, pr = 6, pt = 8, pb = 20, n = ser.length || 1;
+  const mx = plafond(Math.max(...ser.map(x => x.n), 1)), iw = W - pl - pr, ih = H - pt - pb, band = iw / n;
+  const bw = Math.max(2, Math.min(24, band - 2));
+  const y = v => pt + ih - v / mx * ih;
+  const [du, au] = [S.f.ajout_du, S.f.ajout_au];
+  const dansSel = x => { if (!du && !au) return null; const [a, b] = histoBornes(x.d); return (!au || a <= au) && (!du || b >= du); };
+  const grille = [0, mx / 2, mx].map(v => `<line x1="${pl}" x2="${W - pr}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}" stroke="#E9ECF1" stroke-width="1"/>
+      <text x="${pl - 6}" y="${(y(v) + 3.5).toFixed(1)}" text-anchor="end" class="hax">${fmtN(Math.round(v))}</text>`).join('');
+  const pasX = Math.max(1, Math.ceil(n / (W < 420 ? 5 : 8)));
+  const barres = ser.map((x, i) => {
+    const cx = pl + band * i + band / 2, x0 = cx - bw / 2, h = x.n ? Math.max(3, x.n / mx * ih) : 0, y0 = pt + ih - h, r = Math.min(4, bw / 2, h);
+    const s = dansSel(x), on = HISTO.sel === i;
+    const op = (HISTO.sel != null && !on) || s === false ? 0.35 : 1;
+    const bar = h ? `<path d="M${x0.toFixed(1)},${(pt + ih).toFixed(1)}V${(y0 + r).toFixed(1)}Q${x0.toFixed(1)},${y0.toFixed(1)} ${(x0 + r).toFixed(1)},${y0.toFixed(1)}H${(x0 + bw - r).toFixed(1)}Q${(x0 + bw).toFixed(1)},${y0.toFixed(1)} ${(x0 + bw).toFixed(1)},${(y0 + r).toFixed(1)}V${(pt + ih).toFixed(1)}Z" fill="var(--acc)" opacity="${op}"/>` : '';
+    const bord = cx + 18 > W - pr ? 'end' : cx - 18 < pl ? 'start' : 'middle', tx = bord === 'end' ? W - pr : bord === 'start' ? pl : cx;
+    const lab = (n - 1 - i) % pasX === 0 ? `<text x="${tx.toFixed(1)}" y="${H - 5}" text-anchor="${bord}" class="hax">${esc(histoLib(x.d))}</text>` : '';
+    return `${bar}${lab}<rect class="hhit" data-b="${i}" x="${(pl + band * i).toFixed(1)}" y="${pt}" width="${band.toFixed(1)}" height="${ih + 4}" fill="transparent"><title>${esc(histoLib(x.d, true))} : ${fmtN(x.n)}</title></rect>`;
+  }).join('');
+  return `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="Contacts arrivés par ${HISTO.pas}">${grille}
+    <line x1="${pl}" x2="${W - pr}" y1="${pt + ih}" y2="${pt + ih}" stroke="#D5D9E0" stroke-width="1"/>${barres}</svg>`;
+}
+function renderHisto() {
+  const el = $('#histo'), d = HISTO.d; if (!el) return;
+  if (!d) { el.innerHTML = ''; return; }
+  el.classList.toggle('open', HISTO.ouvert);
+  const tete = `<button type="button" class="hhead" id="hTog" aria-expanded="${HISTO.ouvert}">${ico('chart')}<b>Historique</b>
+      <span class="hsum">${d.n_auj ? '+' + fmtN(d.n_auj) : 'Aucun'} aujourd’hui · +${fmtN(d.n7)} en 7 j</span>
+      <span class="hspark">${sparkSvg(d.jour || [])}</span><span class="hchev">${ico('chev')}</span></button>`;
+  if (!HISTO.ouvert) { el.innerHTML = tete; $('#hTog', el).onclick = () => { HISTO.ouvert = true; lsSet('contacts-histo', '1'); renderHisto(); }; return; }
+  const ser = d[HISTO.pas] || [];
+  const ev = (a, b) => !b ? (a ? `<i>contre 0 avant</i>` : '<i>comme avant</i>')
+    : `<i class="${a >= b ? 'up' : 'dn'}">${a >= b ? '↑' : '↓'} ${Math.abs(Math.round((a - b) / b * 100))} % <span>vs avant</span></i>`;
+  const pct = d.base ? Math.round(d.avec_email / d.base * 100) : 0;
+  const src = (d.sources30 || []).map(x => `${esc(ORIG_LABEL[x.o] || String(x.o).replace(/\s*\(.*\)\s*$/, ''))} <b>${fmtN(x.n)}</b>`).join(' · ');
+  el.innerHTML = tete + `<div class="hbody">
+    <div class="hbar"><span class="small mut">Contacts arrivés${activeCount(Object.assign({}, S.f, { ajout_du: '', ajout_au: '' })) || S.f.q ? ' · <b class="hflt">filtres appliqués</b>' : ''}</span>
+      <div class="seg" id="hPas">${[['jour', 'Jour'], ['semaine', 'Semaine'], ['mois', 'Mois']].map(([k, l]) => `<button type="button" data-p="${k}" class="${HISTO.pas === k ? 'on' : ''}">${l}</button>`).join('')}</div></div>
+    <div class="hkpi">
+      <div class="hk"><span>Aujourd’hui</span><b>+${fmtN(d.n_auj)}</b><i>hier +${fmtN(d.n_hier)}</i></div>
+      <div class="hk"><span>7 jours</span><b>+${fmtN(d.n7)}</b>${ev(d.n7, d.n7p)}</div>
+      <div class="hk"><span>30 jours</span><b>+${fmtN(d.n30)}</b><i>≈ ${fmtN(Math.round(d.n30 / 30))} / jour</i></div>
+      <div class="hk"><span>Joignables</span><b>${fmtN(d.joignables)}</b><i>${pct} % avec e-mail</i></div>
+    </div>
+    <div class="hchart" id="hChart"></div>
+    <div class="htip" id="hTip"></div>
+    <div class="hfoot">${d.record && d.record.n ? `Record : <b>+${fmtN(d.record.n)}</b> le ${jm(pD(d.record.d))}${pD(d.record.d).getFullYear() !== pD(d.aujourdhui).getFullYear() ? '/' + pD(d.record.d).getFullYear() : ''}` : ''}
+      ${d.premier ? ` · Premier contact : ${pD(d.premier).toLocaleDateString('fr-FR')}` : ''}${HISTO.pas === 'mois' && d.avant_mois ? ` · ${fmtN(d.avant_mois)} plus anciens` : ''}
+      ${src ? `<br>Sources des 30 derniers jours : ${src}` : ''}
+      <br><span class="mut2">Date d’arrivée : inscription d’origine si on la connaît, sinon date d’ajout dans Contacts.</span>
+      <button type="button" class="btn link small" id="hFerme">Replier</button></div></div>`;
+  const box = $('#hChart', el);
+  box.innerHTML = chartSvg(ser, Math.max(260, box.clientWidth || 320));
+  const tip = $('#hTip', el);
+  const montrer = i => {
+    const x = ser[i]; if (!x) { tip.innerHTML = '<span class="mut">Touche une barre pour voir le détail.</span>'; return; }
+    const [a, b] = histoBornes(x.d);
+    tip.innerHTML = `<span><b>${esc(histoLib(x.d, true).replace(/^./, c => c.toUpperCase()))}</b> : +${fmtN(x.n)} contact${x.n > 1 ? 's' : ''}${x.n && x.e !== x.n ? ` (dont ${fmtN(x.e)} avec e-mail)` : ''}</span>
+      ${x.n ? `<button type="button" class="btn small" id="hVoir">Voir ${x.n > 1 ? 'ces contacts' : 'ce contact'}</button>` : ''}`;
+    const v = $('#hVoir', tip);
+    if (v) v.onclick = () => { S.f.ajout_du = a; S.f.ajout_au = b; if (x.e === 0 && x.n && S.f.email === 'avec') S.f.email = 'tous'; filtersChanged(); };
+  };
+  montrer(HISTO.sel);
+  $$('.hhit', box).forEach(r => {
+    const i = +r.dataset.b;
+    r.onclick = () => { HISTO.sel = HISTO.sel === i ? null : i; renderHisto(); };
+    r.onmouseenter = () => montrer(i);
+    r.onmouseleave = () => montrer(HISTO.sel);
+  });
+  $$('[data-p]', el).forEach(b => b.onclick = () => { HISTO.pas = b.dataset.p; HISTO.sel = null; lsSet('contacts-histo-pas', HISTO.pas); renderHisto(); });
+  const fermer = () => { HISTO.ouvert = false; lsSet('contacts-histo', '0'); renderHisto(); };
+  $('#hTog', el).onclick = fermer; $('#hFerme', el).onclick = fermer;
+}
+
 /* ---------- chargement ---------- */
 async function load(reset, useCache) {
   const my = ++S.req;
@@ -445,6 +570,7 @@ async function load(reset, useCache) {
     S.refresh = my;
   }
   const p = Object.assign({}, S.f, { limit: PAGE, offset: reset ? 0 : S.offset });
+  if (reset) histoCharger();
   try {
     const d = await rpc('crm_liste', { p });
     if (my !== S.req) return;
@@ -502,6 +628,7 @@ function renderChips() {
   if (S.f.accord) add('Accord e-mail', () => S.f.accord = false);
   if (S.f.favoris) add('Favoris', () => S.f.favoris = false);
   if (S.f.exclus) add('Exclus', () => S.f.exclus = false);
+  if (S.f.ajout_du || S.f.ajout_au) add(histoPeriode(S.f.ajout_du, S.f.ajout_au), () => { S.f.ajout_du = ''; S.f.ajout_au = ''; HISTO.sel = null; });
   const el = $('#achips');
   el.innerHTML = c.map((x, i) => `<button class="chip t-acc" data-i="${i}" aria-label="Retirer le filtre ${esc(x.lab)}">${esc(x.lab)} ✕</button>`).join('')
     + (c.length > 1 ? '<button class="btn link small" id="clrF">Tout effacer</button>' : '')
