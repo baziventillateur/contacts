@@ -1,9 +1,9 @@
 // Contacts : la coquille de l'appli (fichiers, bibliothèque Supabase, police) vient du cache du téléphone,
 // pour un lancement immédiat ; les données viennent toujours de Supabase (avec le cache local de l'appli).
 // Gère aussi les notifications push (même principe que CovoitGo).
-const C = 'contacts-v1.18.0';
+const C = 'contacts-v1.19.0';
 const LIB = 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js';
-const SHELL = ['./', 'index.html', 'app.css?v=1.18.0', 'app.js?v=1.18.0', 'extras.js?v=1.18.0', 'parcours.js?v=1.18.0', 'envois.js?v=1.18.0', 'manifest.webmanifest', 'icon-192.png', 'badge.png'];
+const SHELL = ['./', 'index.html', 'app.css?v=1.19.0', 'app.js?v=1.19.0', 'extras.js?v=1.19.0', 'parcours.js?v=1.19.0', 'envois.js?v=1.19.0', 'manifest.webmanifest', 'icon-192.png', 'badge.png'];
 const EXT = ['cdn.jsdelivr.net', 'fonts.googleapis.com', 'fonts.gstatic.com'];
 self.addEventListener('install', e => {
   self.skipWaiting();

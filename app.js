@@ -1,5 +1,5 @@
 /* Contacts — appli de contacts centralisés (Supabase, espace crm du projet Malino) */
-const APP_VERSION = '1.18.0';
+const APP_VERSION = '1.19.0';
 const SHEET_URL = 'https://claude.ai/artifact/8CDf2v6LQcaRbUFmUVi4St'; // copie « Prospects PaceApp » (la base Contacts reste la référence)
 const SB_URL = 'https://fcfkfuqzgsmckkxqfwuo.supabase.co';
 const SB_KEY = 'sb_publishable_a3SNrQOSCH20T5sKsJxuAA_s7H4yCSR';
@@ -976,7 +976,9 @@ function renderFiche(d, c) {
       <div class="card"><h4>Mails <span class="mut" id="envN" style="text-transform:none;letter-spacing:0"></span></h4><div id="envBox"><p class="small mut" style="margin:4px 0 8px">Chargement…</p></div>
         <div class="mfiche" id="mFiche"></div>
         <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><button type="button" class="btn small" id="dMail" ${c.email ? '' : 'disabled'}>${ico('mail')}Écrire un mail</button><button type="button" class="btn small" id="dCamp">${ico('plus')}Ajouter à une campagne</button></div></div>
-      ${suivi.length ? `<div class="card"><h4>Historique</h4>${suivi.map(x => `<div class="kv"><span>${esc(x[0])}</span><span>${esc(x[1])}</span></div>`).join('')}</div>` : ''}
+      <div class="card jfiche"><h4>Historique</h4>${suivi.map(x => `<div class="kv"><span>${esc(x[0])}</span><span>${esc(x[1])}</span></div>`).join('')}
+        <button type="button" class="jtog" id="jTog" aria-expanded="false">${ico('list')}<span class="jtt">Journal de la fiche</span><span class="jts">ajout, mails, modifications…</span><span class="hchev">${ico('chev')}</span></button>
+        <div id="jBox" class="hidden"></div></div>
       ${vers.length || nSrc ? `<div class="card"><h4>Données d’origine <span class="mut" style="text-transform:none;letter-spacing:0">${nSrc} source${nSrc > 1 ? 's' : ''}</span></h4>
         <button type="button" class="btn link small" id="dOrig" style="padding:0">Développer</button><div id="origBox" class="hidden"></div></div>` : ''}
       <div style="display:flex;gap:8px;justify-content:space-between;flex-wrap:wrap">
@@ -1009,6 +1011,7 @@ function renderFiche(d, c) {
     if (!confirm('Supprimer définitivement ce contact ?')) return;
     try { await rpc('crm_supprimer', { p_ids: [c.id] }); closeDrawer(); toast('Contact supprimé'); await refreshMeta(); load(true); } catch (e) { toast(errMsg(e)); }
   };
+  bindJournal(d, c);
   const ob = $('#dOrig', d);
   if (ob) ob.onclick = () => {
     const box = $('#origBox', d);
@@ -1018,6 +1021,73 @@ function renderFiche(d, c) {
       + ((c.donnees_origine && c.donnees_origine.segments) ? `<div class="orig"><div class="src">Listes / segments</div>${c.donnees_origine.segments.map(s => `<div>${esc(s)}</div>`).join('')}</div>` : '')
       + (nSrc ? `<div class="orig"><div class="src">Fichiers sources</div>${c.sources.map(s => `<div>${esc(s)}</div>`).join('')}</div>` : '');
     box.classList.remove('hidden'); ob.textContent = 'Réduire';
+  };
+}
+
+/* ---------- journal de la fiche : tout ce qui s'est passé avec ce contact, chargé seulement quand on le déplie ---------- */
+const J_CHAMPS = { prenom: 'Prénom', nom: 'Nom', email: 'E-mail', telephone: 'Téléphone', ville: 'Ville', code_postal: 'Code postal', adresse: 'Adresse', pays: 'Pays',
+  entreprise: 'Entreprise', metier: 'Métier', secteur: 'Secteur', statut: 'Statut', interet: 'Intérêt', tags: 'Étiquettes', notes: 'Notes', favori: 'Favori',
+  desinscrit: 'Ne plus contacter', blacklist: 'Liste noire', a_exclure: 'Exclu des envois', motif_exclusion: 'Motif d’exclusion', zone: 'Zone', origine: 'Origine', type_contact: 'Type' };
+const J_ETAT = { delivered: ['reçu', 'jok'], sent: ['envoyé', ''], scheduled: ['programmé', 'jprog'], bounced: ['rebond', 'jbad'], complained: ['signalé spam', 'jbad'], delivery_delayed: ['retardé', 'jwarn'], failed: ['échec', 'jbad'] };
+const jVal = v => v === null || v === undefined || v === '' ? '∅' : Array.isArray(v) ? (v.length ? v.join(', ') : '∅') : v === true ? 'oui' : v === false ? 'non' : String(v);
+function jModif(e) {
+  let ch = {}; try { ch = JSON.parse(e.detail || '{}'); } catch (x) { /* ancien format */ }
+  const ks = Object.keys(ch);
+  if (ks.length === 1) {
+    const [k] = ks, [a, b] = ch[k];
+    if (k === 'favori') return { titre: b ? 'Ajouté aux favoris' : 'Retiré des favoris', k: 'modif' };
+    if (k === 'desinscrit' && b) return { titre: 'Ne plus contacter activé', k: 'stop' };
+    if (k === 'a_exclure') return { titre: b ? 'Exclu des envois' : 'Réintégré dans les envois', k: b ? 'stop' : 'modif' };
+    if (k === 'statut') return { titre: `Statut : ${jVal(a)} → ${jVal(b)}`, k: 'modif' };
+    if (k === 'tags') {
+      const av = new Set(a || []), ap = new Set(b || []), plus = [...ap].filter(x => !av.has(x)), moins = [...av].filter(x => !ap.has(x));
+      return { titre: [plus.length ? 'Étiquette' + (plus.length > 1 ? 's' : '') + ' ajoutée' + (plus.length > 1 ? 's' : '') + ' : ' + plus.join(', ') : '', moins.length ? 'retirée' + (moins.length > 1 ? 's' : '') + ' : ' + moins.join(', ') : ''].filter(Boolean).join(' · '), k: 'modif' };
+    }
+  }
+  return { titre: 'Fiche modifiée', sous: ks.map(k => J_CHAMPS[k] || k).join(', '),
+    diff: ks.map(k => `<div><span>${esc(J_CHAMPS[k] || k)}</span>${k === 'notes' ? '<i>texte modifié</i>' : `<s>${esc(jVal(ch[k][0]))}</s> → <b>${esc(jVal(ch[k][1]))}</b>`}</div>`).join(''), k: 'modif' };
+}
+function jJour(t) {
+  const d = new Date(t), a = new Date(); a.setHours(0, 0, 0, 0);
+  const j = new Date(d); j.setHours(0, 0, 0, 0);
+  const n = Math.round((a - j) / 864e5);
+  if (n === 0) return 'Aujourd’hui'; if (n === 1) return 'Hier'; if (n === -1) return 'Demain';
+  return d.toLocaleDateString('fr-FR', { weekday: n > 0 && n < 7 ? 'long' : undefined, day: 'numeric', month: 'long', year: d.getFullYear() !== a.getFullYear() ? 'numeric' : undefined });
+}
+function renderJournal(box, ev, tout) {
+  if (!ev.length) { box.innerHTML = '<p class="small mut" style="margin:6px 0 2px">Rien à afficher pour l’instant.</p>'; return; }
+  const l = tout ? ev : ev.slice(0, 8);
+  let jour = '', h = '';
+  l.forEach((e, i) => {
+    const jr = jJour(e.t);
+    if (jr !== jour) { h += `<li class="jday">${esc(jr)}</li>`; jour = jr; }
+    const m = e.k === 'modif' ? jModif(e) : null;
+    const k = m ? m.k : e.k, titre = m ? m.titre : e.titre, sous = m ? m.sous : e.detail;
+    const st = e.etat && J_ETAT[e.etat] ? J_ETAT[e.etat] : null;
+    const heure = new Date(e.t).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+    const jourSeul = /T00:00:00|T23:00:00|T22:00:00/.test(String(e.t)) && ['inscription', 'import'].includes(k);
+    h += `<li class="jl jk-${esc(k)}${m && m.diff ? ' jdiff' : ''}" ${m && m.diff ? `data-j="${i}" tabindex="0" role="button" aria-expanded="false"` : ''}>
+      <span class="jdot"></span><div class="jtx"><span class="jti">${esc(titre)}</span>${sous ? `<span class="jso">${esc(sous)}</span>` : ''}${st ? `<span class="jst ${st[1]}">${st[0]}</span>` : ''}${e.par ? `<span class="jpar">par ${esc(String(e.par).split('@')[0])}</span>` : ''}
+      ${m && m.diff ? `<div class="jdf hidden">${m.diff}</div>` : ''}</div><time>${jourSeul ? '' : heure}</time></li>`;
+  });
+  box.innerHTML = `<ol class="jlog">${h}</ol>${!tout && ev.length > 8 ? `<button type="button" class="btn link small" id="jAll">Tout voir (${fmtN(ev.length)})</button>` : ''}`;
+  $$('[data-j]', box).forEach(li => li.onclick = () => { const df = $('.jdf', li); df.classList.toggle('hidden'); li.setAttribute('aria-expanded', String(!df.classList.contains('hidden'))); });
+  const all = $('#jAll', box); if (all) all.onclick = () => renderJournal(box, ev, true);
+}
+function bindJournal(d, c) {
+  const tog = $('#jTog', d), box = $('#jBox', d); if (!tog || !box) return;
+  let ev = null, charge = false;
+  tog.onclick = async () => {
+    const ouvert = tog.getAttribute('aria-expanded') === 'true';
+    tog.setAttribute('aria-expanded', String(!ouvert)); tog.classList.toggle('open', !ouvert); box.classList.toggle('hidden', ouvert);
+    if (ouvert || charge) return;
+    charge = true; box.innerHTML = '<p class="small mut" style="margin:6px 0 2px">Chargement…</p>';
+    try {
+      ev = await rpc('crm_journal', { p_id: c.id }) || []; if (!box.isConnected) return;
+      // « Ajouté (origine) » des imports fait doublon avec l'ajout dans Contacts du même jour
+      const jAjout = new Set(ev.filter(e => e.k === 'ajout').map(e => jJour(e.t)));
+      ev = ev.filter(e => !(e.k === 'import' && /^Ajouté \(/.test(e.titre || '') && jAjout.has(jJour(e.t)))); renderJournal(box, ev, false); $('.jts', tog).textContent = `${fmtN(ev.length)} événement${ev.length > 1 ? 's' : ''}`; }
+    catch (e) { charge = false; box.innerHTML = `<p class="small mut" style="margin:6px 0 2px">${esc(errMsg(e))}</p>`; }
   };
 }
 async function save(d, p, quick) {
