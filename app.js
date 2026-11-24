@@ -1,5 +1,5 @@
 /* Contacts — appli de contacts centralisés (Supabase, espace crm du projet Malino) */
-const APP_VERSION = '1.16.0';
+const APP_VERSION = '1.17.0';
 const SHEET_URL = 'https://claude.ai/artifact/8CDf2v6LQcaRbUFmUVi4St'; // copie « Prospects PaceApp » (la base Contacts reste la référence)
 const SB_URL = 'https://fcfkfuqzgsmckkxqfwuo.supabase.co';
 const SB_KEY = 'sb_publishable_a3SNrQOSCH20T5sKsJxuAA_s7H4yCSR';
@@ -293,7 +293,7 @@ function shell() {
   <button class="fab only-m" id="fab" aria-label="Ajouter un contact">${ico('plus')}</button>
   <nav class="bnav only-m" aria-label="Navigation">
     <button class="on" id="nContacts">${ico('users')}Contacts</button>
-    <button id="nCamp">${ico('send')}Campagnes</button>
+    <button id="nCamp">${ico('send')}Envois</button>
     <button id="nLiens">${ico('link')}Liens</button>
     <button id="nVues">${ico('list')}Vues</button>
   </nav>`;
@@ -371,8 +371,7 @@ function renderSide() {
     <button class="sbtn" id="sNew">${ico('plus')}Ajouter un contact</button>
     <div class="shead">Espaces</div>
     <button class="sbtn ${S.page === 'contacts' ? 'on' : ''}" id="sPContacts">${ico('users')}Contacts<span class="n">${S.stats ? fmtN(S.stats.total) : ''}</span></button>
-    <button class="sbtn ${S.page === 'campagnes' ? 'on' : ''}" id="sPCamp">${ico('send')}Campagnes<span class="n">${S.camps ? fmtN(S.camps.total_envois) : ''}</span></button>
-    <button class="sbtn" id="sEnv">${ico('mail')}Envoyés</button>
+    <button class="sbtn ${S.page === 'campagnes' ? 'on' : ''}" id="sPCamp">${ico('send')}Envois<span class="n">${S.camps ? fmtN(S.camps.total_envois) : ''}</span></button>
     <button class="sbtn ${S.page === 'liens' ? 'on' : ''}" id="sPLiens">${ico('link')}Liens d’inscription<span class="n">${S.liens ? fmtN(S.liens.reduce((a, l) => a + (+l.inscrits || 0), 0)) : ''}</span></button>
     <a class="sbtn" href="${SHEET_URL}" target="_blank" rel="noopener">${ico('sheet')}Sheet prospects<span class="n">↗</span></a>
     <div class="shead">Favoris</div>
@@ -392,7 +391,6 @@ function renderSide() {
   $('#sOut').onclick = logout;
   $('#sPContacts').onclick = () => { toggleSide(false); showPage('contacts'); };
   $('#sPCamp').onclick = () => { toggleSide(false); showPage('campagnes'); };
-  $('#sEnv').onclick = () => { toggleSide(false); openEnvoyes(); };
   $('#sPLiens').onclick = () => { toggleSide(false); showPage('liens'); };
   $$('[data-fav]', s).forEach(b => b.onclick = () => { toggleSide(false); openFiche(+b.dataset.fav); });
   $$('[data-vue]', s).forEach(b => b.onclick = e => {
@@ -848,8 +846,9 @@ function renderFiche(d, c) {
       <div class="card"><h4>Coordonnées et suivi</h4>${formFields(c)}</div>
       ${c.commentaire_inscrit ? `<div class="card"><h4>Commentaire de l’inscrit</h4><p class="small" style="margin:0 0 6px;line-height:1.45;white-space:pre-line">${esc(c.commentaire_inscrit)}</p></div>` : ''}
       ${c.accroche ? `<div class="card"><h4>Accroche utilisée</h4><p class="small" style="margin:0 0 6px;line-height:1.45">${esc(c.accroche)}</p></div>` : ''}
-      <div class="card"><h4>Campagnes reçues <span class="mut" id="envN" style="text-transform:none;letter-spacing:0"></span></h4><div id="envBox"><p class="small mut" style="margin:4px 0 8px">Chargement…</p></div>
-        <button type="button" class="btn small" id="dCamp" style="margin-top:6px">${ico('plus')}Ajouter à une campagne</button></div>
+      <div class="card"><h4>Mails <span class="mut" id="envN" style="text-transform:none;letter-spacing:0"></span></h4><div id="envBox"><p class="small mut" style="margin:4px 0 8px">Chargement…</p></div>
+        <div class="mfiche" id="mFiche"></div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"><button type="button" class="btn small" id="dMail" ${c.email ? '' : 'disabled'}>${ico('mail')}Écrire un mail</button><button type="button" class="btn small" id="dCamp">${ico('plus')}Ajouter à une campagne</button></div></div>
       ${suivi.length ? `<div class="card"><h4>Historique</h4>${suivi.map(x => `<div class="kv"><span>${esc(x[0])}</span><span>${esc(x[1])}</span></div>`).join('')}</div>` : ''}
       ${vers.length || nSrc ? `<div class="card"><h4>Données d’origine <span class="mut" style="text-transform:none;letter-spacing:0">${nSrc} source${nSrc > 1 ? 's' : ''}</span></h4>
         <button type="button" class="btn link small" id="dOrig" style="padding:0">Développer</button><div id="origBox" class="hidden"></div></div>` : ''}
@@ -862,6 +861,8 @@ function renderFiche(d, c) {
       <button class="btn" type="button" id="dCancel">Fermer</button><button class="btn primary" type="button" id="dSave">Enregistrer</button></div>`;
   const getTags = bindTagEditor(d, { id: c.id, origine: c.origine });
   loadEnvois(d, c);
+  if (window.ficheMails) ficheMails(d, c);
+  $('#dMail', d).onclick = () => { if (window.editerMail) editerMail(null, { a_email: c.email, a_prenom: c.prenom || '' }); };
   $('#dCamp', d).onclick = async () => {
     let cc = c;
     const em = $('[name=email]', d), v = em ? em.value.trim() : '';
@@ -1003,13 +1004,13 @@ function showPage(pg, silent) {
   $('#nContacts').classList.toggle('on', k);
   $('#nCamp').classList.toggle('on', c);
   $('#nLiens').classList.toggle('on', l);
-  if (c) { $('#vTitle').textContent = 'Campagnes'; $('#vCount').textContent = ''; if (!silent) renderCampagnes(); }
+  if (c) { $('#vTitle').textContent = 'Envois'; $('#vCount').textContent = ''; if (!silent) renderCampagnes(); }
   else if (l) { $('#vTitle').textContent = 'Liens d’inscription'; $('#vCount').textContent = ''; if (!silent) renderLiens(); }
   else if (!silent) { $('#vTitle').textContent = (VUES_BASE.find(v => v.id === S.vue) || {}).nom || 'Contacts'; renderChips(); }
   renderSide();
 }
-const MARKETING = ['prospection', 'relance', 'fidelisation'];
-const TYPE_LABEL = { prospection: 'Prospection', relance: 'Relance', fidelisation: 'Fidélisation', transactionnel: 'Automatique', interne: 'Interne' };
+const MARKETING = ['prospection', 'relance', 'fidelisation', 'newsletter'];
+const TYPE_LABEL = { prospection: 'Prospection', relance: 'Relance', fidelisation: 'Fidélisation', newsletter: 'Newsletter', transactionnel: 'Mail d’appli', parcours: 'Parcours', simple: 'Mail simple', interne: 'Interne' };
 function campOpts(sel) {
   return (S.camps?.campagnes || []).filter(c => MARKETING.includes(c.type))
     .map(c => `<option value="${esc(c.slug)}" ${c.slug === sel ? 'selected' : ''}>${esc(campShort(c.nom))}${c.nb + c.programmes ? ' (' + fmtN(c.nb + c.programmes) + ')' : ''}</option>`).join('');
@@ -1032,7 +1033,7 @@ function shortList(items, n, render, id) {
   return first + rest;
 }
 async function renderCampagnes(force) {
-  const P = $('#pCamp');
+  const P = $('#pCampBody') || $('#pCamp');
   if (force || !S.camps) {
     P.innerHTML = '<p class="empty">Chargement…</p>';
     try { S.camps = await rpc('crm_campagnes_vue'); } catch (e) { P.innerHTML = `<p class="empty">${esc(errMsg(e))}</p>`; return; }
@@ -1101,8 +1102,6 @@ async function renderCampagnes(force) {
       <i class="c0" style="width:${pct(cov.jamais)}%"></i><i class="c1" style="width:${pct(cov.une)}%"></i><i class="c2" style="width:${pct(cov.plusieurs)}%"></i>
     </div>
     <div class="leg small mut"><span><i class="c0"></i>Jamais contactés ${pct(cov.jamais)} %</span><span><i class="c1"></i>1 campagne ${pct(cov.une)} %</span><span><i class="c2"></i>2 ou plus ${pct(cov.plusieurs)} %</span></div>
-    <section class="csec"><h3>Derniers envois <span class="small mut">tout ce qui est parti, campagne ou pas</span></h3>
-      <div id="cEnv"><p class="small mut">Chargement…</p></div><button class="btn link small" id="cEnvAll">Tout voir</button></section>
     <section class="csec"><h3>Frise des envois <span class="small mut">par semaine · touche une bulle pour voir les destinataires</span></h3>
       <div class="fwrap">${friseHtml}</div>
       <div class="leg small mut"><span><i class="bubl"></i>envoyés</span><span><i class="bubl bprog"></i>programmés</span><span>${esc(sync)}</span></div></section>
@@ -1112,7 +1111,6 @@ async function renderCampagnes(force) {
       <div class="cgrid">${camps.slice().sort((a, b) => ((b.nb + b.programmes) > 0) - ((a.nb + a.programmes) > 0) || String(b.dernier || '').localeCompare(String(a.dernier || ''))).map(card).join('')}</div></section>
   </div>`;
   drawJours($('#cJours', P), K);
-  envRecents($('#cEnv', P)); $('#cEnvAll', P).onclick = () => openEnvoyes();
   $('#cNew', P).onclick = openNouvelleCampagne;
   $$('[data-go]', P).forEach(b => b.onclick = () => { const g = b.dataset.go; goContacts(g === 'all' ? { joignables: true } : { nb_campagnes: g, joignables: true }); });
   $$('[data-camp]', P).forEach(b => b.onclick = () => openCampagne(b.dataset.camp));
@@ -1564,15 +1562,20 @@ function openNouvelleCampagne() {
   let marque = 'Malino';
   const w = dialog('Nouvelle campagne', `<label class="f">Nom<input id="ncN" maxlength="80" placeholder="ex. Relance rentrée"></label>
     <div class="f">Marque<div class="seg" id="ncM"><button type="button" data-m="Malino" class="on">Malino</button><button type="button" data-m="PaceApp">PaceApp</button><button type="button" data-m="samy">Neutre (Samy)</button></div></div>
+    <div class="f">Type<div class="seg" id="ncT"><button type="button" data-t="prospection" class="on">Campagne (une fois)</button><button type="button" data-t="newsletter">Newsletter (régulière)</button></div></div>
     <label class="f">Couleur<input type="color" id="ncC" value="${COUL.Malino}" class="nccol"></label>
-    <p class="small mut" style="margin:0">Ensuite, tu écris le mail de départ et les relances (J+3, J+7…), puis tu ajoutes des contacts.</p>
+    <p class="small mut" style="margin:0" id="ncH">Le même mail envoyé une fois à un groupe, avec des relances possibles (J+3, J+7…). Ensuite, tu écris le mail et tu ajoutes des contacts.</p>
     <div class="mact"><button class="btn" id="ncX">Annuler</button><button class="btn primary" id="ncGo">Créer</button></div>`);
+  let ntype = 'prospection';
+  $$('[data-t]', w).forEach(b => b.onclick = () => { ntype = b.dataset.t; $$('[data-t]', w).forEach(x => x.classList.toggle('on', x === b));
+    $('#ncH', w).textContent = ntype === 'newsletter' ? 'Des nouvelles envoyées régulièrement (chaque mois par exemple) aux abonnés. Chaque numéro est un envoi de cette campagne.' : 'Le même mail envoyé une fois à un groupe, avec des relances possibles (J+3, J+7…). Ensuite, tu écris le mail et tu ajoutes des contacts.'; });
   $$('[data-m]', w).forEach(b => b.onclick = () => { marque = b.dataset.m; $$('[data-m]', w).forEach(x => x.classList.toggle('on', x === b)); $('#ncC', w).value = COUL[marque]; });
   $('#ncX', w).onclick = closeApercu;
   $('#ncGo', w).onclick = async () => {
     const g = $('#ncGo', w); g.disabled = true; g.textContent = 'Création…';
     try {
       const r = await seqFn({ action: 'creer', nom: $('#ncN', w).value, marque, couleur: $('#ncC', w).value });
+      if (ntype !== 'prospection' && r && (r.slug || r.campagne)) await fnCall('crm-mails', { action: 'type_campagne', slug: r.slug || (r.campagne && r.campagne.slug) || r.campagne, type: ntype }).catch(() => {});
       closeApercu(); await refreshCamps(); persoCamps(true); openCampagne(r.slug);
       toast('Campagne créée : écris le mail de départ');
       if (S.page === 'campagnes' && $('#pCamp')) renderCampagnes(true);
@@ -1649,7 +1652,7 @@ async function loadEnvois(d, c) {
   d._env = env || [];
   const mk = (env || []).filter(x => MARKETING.includes(x.type));
   $('#envN', d).textContent = mk.length ? mk.length + ' envoi' + (mk.length > 1 ? 's' : '') : '';
-  if (!env.length) { box.innerHTML = '<p class="small mut" style="margin:4px 0 8px">Aucune campagne reçue pour l’instant.</p>'; return; }
+  if (!env.length) { box.innerHTML = '<p class="small mut" style="margin:4px 0 8px">Aucun mail reçu pour l’instant.</p>'; return; }
   box.innerHTML = `<div class="tline">${env.map(x => `<button type="button" class="ti ${MARKETING.includes(x.type) ? '' : 'auto'}" data-env="${x.id}" title="Voir le mail">${campDot(x.couleur)}<div><b>${esc(campShort(x.nom))}</b><span class="small mut">${esc(fmtD(x.envoye_le))}${x.statut === 'scheduled' ? ' · programmé' : x.statut === 'bounced' ? ' · rebond' : ''}</span></div><span class="voir">${ico('eye')}Voir le mail</span></button>`).join('')}</div>`;
   $$('[data-env]', box).forEach(b => b.onclick = () => openApercu({ envoi_id: +b.dataset.env }));
 }

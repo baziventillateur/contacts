@@ -57,10 +57,7 @@
   window.renderCampagnes = async function (force) { const r = await _render.apply(this, arguments); try { decorer(); } catch (e) { console.warn(e); } return r; };
   async function decorer() {
     const P = $('#pCamp'); if (!P) return;
-    const w = $('.cwrap', P); if (!w || $('.pcsec', w)) return;
-    const sec = document.createElement('section'); sec.className = 'csec pcsec';
-    sec.innerHTML = `<h3>🌱 Parcours d’accueil <span class="small mut">mails envoyés tout seuls après l’inscription</span></h3><div class="pcl" id="pcList"><p class="small mut">Chargement…</p></div>`;
-    w.insertBefore(sec, w.firstChild);
+    const w = $('.cwrap', P); if (!w) return;
     // filtre par marque, au-dessus de la grille des campagnes
     const grid = $('.cgrid', w);
     if (grid && !$('.mqchips', w)) {
@@ -70,15 +67,20 @@
       $$('[data-mq]', ch).forEach(b => b.onclick = () => { MQ = b.dataset.mq; try { localStorage.setItem('contacts-marque', MQ); } catch (e) { } $$('[data-mq]', ch).forEach(x => x.classList.toggle('on', x === b)); filtrer(w); });
       filtrer(w);
     }
+  }
+  /* liste des parcours (onglet « Automatiques » de l'espace Envois) */
+  async function pcListe(L) {
+    if (!L) return;
     try {
-      const r = await pcFn({ action: 'liste' }); const L = $('#pcList'); if (!L) return;
-      const lst = (r.parcours || []).filter(p => !MQ || String(p.marque || '').toLowerCase() === MQ.toLowerCase());
+      const r = await pcFn({ action: 'liste' });
+      const lst = r.parcours || [];
       L.innerHTML = lst.length ? lst.map(p => `<button class="pcit" data-pc="${esc(p.slug)}"><span class="pe">🌱</span><span class="tx"><span class="l1"><b>${esc(nomP(p))}</b><span class="pctag ${p.actif ? 'on' : 'off'}">${p.actif ? 'Actif' : 'En pause'}</span></span>
         <span class="l2"><span><b>${p.mails}</b> mail${p.mails > 1 ? 's' : ''}</span><span><b>${fmtN(p.en_cours)}</b> en cours</span><span><b>${fmtN(p.envoyes)}</b> envoyé${p.envoyes > 1 ? 's' : ''}</span><span>v${p.version}</span></span></span>${ico('right')}</button>`).join('')
-        : '<p class="small mut">Aucun parcours pour cette marque.</p>';
+        : '<p class="small mut">Aucun parcours pour l’instant.</p>';
       $$('[data-pc]', L).forEach(b => b.onclick = () => openParcours(b.dataset.pc));
-    } catch (e) { const L = $('#pcList'); if (L) L.innerHTML = `<p class="small mut">${esc(errMsg(e))}</p>`; }
+    } catch (e) { L.innerHTML = `<p class="small mut">${esc(errMsg(e))}</p>`; }
   }
+  window.pcListe = pcListe;
   function filtrer(w) {
     $$('.ccard', w).forEach(c => { const m = (($('.cmeta', c) || {}).textContent || ''); c.style.display = !MQ || m.toLowerCase().includes(MQ.toLowerCase()) ? '' : 'none'; });
   }
@@ -272,8 +274,8 @@
     const go = () => {
       if (!S.user || !$('#pCamp')) { if (++essais < 60) setTimeout(go, 250); return; }
       try { history.replaceState(null, '', location.pathname); } catch (e) { }
-      if (m[1] === 'parcours') { showPage('campagnes'); setTimeout(() => openParcours(m[2] || 'malino-bienvenue'), 200); }
-      else if (m[1] === 'campagnes') { const k = MARQUES.find(([x]) => x.toLowerCase() === String(m[2] || '').toLowerCase()); MQ = k ? k[0] : ''; try { localStorage.setItem('contacts-marque', MQ); } catch (e) { } showPage('campagnes'); }
+      if (m[1] === 'parcours') { if (window.ouvrirEnvois) ouvrirEnvois('auto'); else showPage('campagnes'); setTimeout(() => openParcours(m[2] || 'malino-bienvenue'), 200); }
+      else if (m[1] === 'campagnes') { const k = MARQUES.find(([x]) => x.toLowerCase() === String(m[2] || '').toLowerCase()); MQ = k ? k[0] : ''; try { localStorage.setItem('contacts-marque', MQ); } catch (e) { } if (window.ouvrirEnvois) ouvrirEnvois('campagnes'); else showPage('campagnes'); }
       else if (m[1] === 'inscrits') { const app = String(m[2] || 'malino').toLowerCase(); goContacts({ tags: [app === 'paceapp' ? 'PaceApp' : 'Malino'], email: 'tous' }); const t = $('#vTitle'); if (t) t.textContent = `Inscrits ${app === 'paceapp' ? 'PaceApp' : 'Malino'}`; }
     };
     go();

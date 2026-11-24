@@ -23,3 +23,15 @@ fiche modifiable, ajout de contacts, export CSV.
 - Page publique `inscription.html?l=<code>` : prénom, e-mail, commentaire, puis code à 6 chiffres reçu par e-mail (fonction `crm-inscription`, expéditeur selon la marque, code valable 30 min, 5 essais, limites anti-abus). Une fois confirmé, la personne est ajoutée (ou fusionnée) dans `crm.prospects` avec les réglages du lien, et une notification arrive dans l'appli.
 - Le commentaire de l'inscrit est rangé dans `commentaire_inscrit` (carte « Commentaire de l'inscrit » sur la fiche), à part des notes internes.
 - Statut « Inscrit » ajouté, notification « Nouvel inscrit » (réglable comme les autres événements) ; bouton « Sheet » dans la barre du haut (copie de suivi, la base de Contacts fait foi).
+
+## v1.17.0 — espace « Envois »
+L'espace « Campagnes » devient **Envois**, avec 5 onglets (`envois.js`) :
+- **À venir** : tout ce qui va partir dans les 14 jours, jour par jour (mails simples, campagnes programmées, parcours).
+- **Mails simples** : un mail écrit pour une personne, tout de suite ou à l'heure choisie. Contacts le garde (`crm.mails_simples`)
+  et l'envoie lui-même à l'heure (fonction `crm-mails`, tâche `crm-mails` chaque minute, qui n'appelle la fonction que s'il y a un mail à envoyer).
+  Modifier, annuler, m'envoyer un test, aperçu ; « Écrire un mail » sur la fiche d'un contact ; mise en page HTML possible (préparée avec Claude).
+  Chaque mail parti est noté dans `crm.envois` (campagne `mail-simple`, type `simple`) et sur la fiche.
+- **Campagnes** : le même mail à un groupe ; type **Newsletter** (régulière, exclue de l'alerte « reçue deux fois »).
+- **Automatiques** : parcours (après l'inscription) et mails des applis (codes, rapports, alertes).
+- **Historique** : tout ce qui est parti, filtres Mails simples / Campagnes / Automatiques / Problèmes.
+Liens directs : `#envois/<avenir|simples|campagnes|auto|histo>`, `#mail/nouveau`.
